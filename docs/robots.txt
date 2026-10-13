@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://thesalaty.github.io/quick-launcher/sitemap.xml

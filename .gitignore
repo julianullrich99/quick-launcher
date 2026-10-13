@@ -1,1 +1,4 @@
-src/schemas/gschemas.compiled
+node_modules/
+dist/
+*.shell-extension.zip
+build/

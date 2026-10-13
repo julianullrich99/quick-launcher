@@ -1,9 +1,10 @@
 {
   "uuid": "quick-launcher@julian.falcondev.de",
   "name": "Quick Launcher",
-  "description": "Spotlight-style launchers: search your Bitwarden vault (via rbw) to copy or type secrets, and start Clockify time entries.",
+  "description": "A Raycast-style launcher: Bitwarden (rbw) and 1Password in one search, Clockify timers, a calculator with units, currencies, dates and time zones, emoji and system commands.",
   "shell-version": ["48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.quick-launcher",
-  "url": "",
-  "version": 1
+  "url": "https://github.com/TheSalaty/quick-launcher",
+  "version": 2,
+  "version-name": "2.0.0"
 }

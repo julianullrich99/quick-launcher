@@ -1,0 +1,29 @@
+#!/bin/bash
+# Fake rbw for tools/shoot.sh. State lives in $QL_FIXTURE_STATE.
+S=${QL_FIXTURE_STATE:?}
+here=$(dirname "$0")
+case "$1" in
+  unlocked) [ -f "$S/rbw-unlocked" ] ;;
+  unlock)
+    pe=$(cat "$S/rbw-pinentry" 2>/dev/null)
+    if [ -n "$pe" ] && [ "$pe" != pinentry ]; then
+      pin=$(printf 'SETTITLE rbw\nSETPROMPT Master Password\nSETDESC Unlock the local database for julian@falcondev.de\nGETPIN\n' |
+        "$pe" --timeout 0 | sed -n 's/^D //p')
+      [ "$pin" = hunter2 ] || { echo "rbw unlock: pinentry cancelled" >&2; exit 1; }
+    fi
+    touch "$S/rbw-unlocked" ;;
+  lock|stop-agent) rm -f "$S/rbw-unlocked" ;;
+  sync) ;;
+  list) [ -f "$S/rbw-unlocked" ] && cat "$here/rbw-list.json" ;;
+  get) echo "secret-$2" ;;
+  code) echo 123456 ;;
+  config)
+    case "$2" in
+      show) printf '{"email":%s,"base_url":%s,"pinentry":"%s"}\n' \
+        "$( [ -f "$S/rbw-email" ] && printf '"%s"' "$(cat "$S/rbw-email")" || echo null)" \
+        "$( [ -f "$S/rbw-base_url" ] && printf '"%s"' "$(cat "$S/rbw-base_url")" || echo null)" \
+        "$(cat "$S/rbw-pinentry" 2>/dev/null || echo pinentry)" ;;
+      set) echo "$4" > "$S/rbw-$3" ;;
+      unset) rm -f "$S/rbw-$3" ;;
+    esac ;;
+esac

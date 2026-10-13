@@ -1,0 +1,6 @@
+[{"id":"b1","name":"GitHub","user":"julian@falcondev.de","folder":"Work","uris":["https://github.com"],"type":"Login"},
+ {"id":"b2","name":"AWS Console","user":"julian.ullrich","folder":"Work/Infra","uris":["https://console.aws.amazon.com"],"type":"Login"},
+ {"id":"b3","name":"Hetzner Cloud","user":"ops@falcondev.de","folder":"Work/Infra","uris":[],"type":"Login"},
+ {"id":"b4","name":"Grafana","user":"admin","folder":"Work","uris":["https://grafana.falcondev.de"],"type":"Login"},
+ {"id":"b5","name":"Company Card","user":null,"folder":"Work","uris":[],"type":"Card"},
+ {"id":"b6","name":"Deploy key","user":null,"folder":"Work/Infra","uris":[],"type":"SshKey"}]

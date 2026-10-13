@@ -1,0 +1,6 @@
+{
+  "uuid": "screenshot-driver@quick-launcher",
+  "name": "Screenshot driver",
+  "description": "Test helper for tools/shoot.sh: virtual keyboard and stage screenshots over D-Bus.",
+  "shell-version": ["48", "49", "50"]
+}

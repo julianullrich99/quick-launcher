@@ -1,0 +1,34 @@
+{
+  "name": "quick-launcher",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Raycast-style GNOME Shell launcher: Bitwarden, 1Password, Clockify, calculator, emoji, system commands",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "make assets",
+    "watch": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test",
+    "lint": "eslint .",
+    "test": "node --test 'test/*.test.ts'",
+    "check": "make check",
+    "install-extension": "make install",
+    "pack": "make pack"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@girs/adw-1": "4.9.0",
+    "@girs/gdk-4.0": "4.9.0",
+    "@girs/giounix-2.0": "4.9.0",
+    "@girs/gjs": "^4.9.0",
+    "@girs/gnome-shell": "^50.0.4",
+    "@girs/gtk-4.0": "4.9.0",
+    "@girs/soup-3.0": "4.9.0",
+    "@types/node": "24",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1"
+  }
+}

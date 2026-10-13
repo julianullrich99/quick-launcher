@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Launcher — a Raycast-style launcher for GNOME: passwords, Clockify, calculator</title>
+<meta name="description" content="A Raycast-style launcher for GNOME Shell: search Bitwarden and 1Password in one list, unlock both right there, copy or type passwords on Wayland, start Clockify timers, calculate with units, currencies, dates and time zones, find emoji and run system commands.">
+<link rel="canonical" href="https://thesalaty.github.io/quick-launcher/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Quick Launcher — a Raycast-style launcher for GNOME">
+<meta property="og:description" content="GNOME Shell extension: one search over Bitwarden and 1Password, Clockify timers, a calculator with units, dates and time zones, emoji and system commands.">
+<meta property="og:image" content="https://thesalaty.github.io/quick-launcher/root.png">
+<meta property="og:url" content="https://thesalaty.github.io/quick-launcher/">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Quick Launcher",
+  "alternateName": "Raycast-style launcher for GNOME Shell",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Linux, GNOME Shell 48-50",
+  "description": "A Raycast-style GNOME Shell launcher: one search over Bitwarden (rbw) and 1Password (op), Clockify timers, a calculator with units, currencies, dates and time zones, emoji and system commands.",
+  "softwareVersion": "2.0.0",
+  "url": "https://thesalaty.github.io/quick-launcher/",
+  "downloadUrl": "https://github.com/TheSalaty/quick-launcher/releases/latest",
+  "codeRepository": "https://github.com/TheSalaty/quick-launcher",
+  "license": "https://opensource.org/licenses/MIT",
+  "author": { "@type": "Person", "name": "TheSalaty" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #1b1b1f;
+    --dim: #5d5d68;
+    --bg: #fdfdfd;
+    --line: #e2e2e6;
+    --accent: #1a7f8e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e6ea; --dim: #a0a0ab; --bg: #17171b; --line: #2f2f36; --accent: #5fc9d6; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    padding: 3rem 1.25rem 5rem;
+    max-width: 46rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 1.5rem; letter-spacing: -.02em; }
+  h1 .sub { display: block; margin-top: .2rem; font-size: 1.05rem; font-weight: 400; color: var(--dim); letter-spacing: 0; }
+  h2 { font-size: 1.15rem; margin: 2.75rem 0 .75rem; letter-spacing: -.01em; }
+  .lede { color: var(--dim); font-size: 1.05rem; margin: 0 0 2rem; }
+  a { color: var(--accent); }
+  img { max-width: 100%; height: auto; border-radius: 10px; }
+  ul { padding-left: 1.15rem; }
+  li { margin: .4rem 0; }
+  pre {
+    background: color-mix(in srgb, var(--fg) 6%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: .8rem 1rem;
+    overflow-x: auto;
+    font-size: .875rem;
+  }
+  code, kbd { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
+  kbd {
+    font-size: .8rem;
+    padding: .05rem .35rem;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+  }
+  .note { color: var(--dim); font-size: .9rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--dim); font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<h1>Quick Launcher <span class="sub">A Raycast-style launcher for GNOME: passwords, Clockify, calculator</span></h1>
+<p class="lede">One shortcut, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd>, and one search over your
+<strong>Bitwarden</strong> and <strong>1Password</strong> vaults, your recent <strong>Clockify</strong>
+entries and a set of commands. Anything that looks like a calculation, a unit, a date or a time zone is
+answered as you type.</p>
+
+<p>It follows the shell theme in light and dark and with your accent color, and blurs the desktop behind it.
+No apps are launched and there is no clipboard history. It is meant for the things a general app launcher
+doesn't do well.</p>
+
+<p><img src="root.png" alt="Quick Launcher with recent items and commands" width="600"></p>
+
+<h2>What it does</h2>
+<ul>
+  <li><strong>Passwords from both vaults</strong>: Bitwarden through <a href="https://github.com/doy/rbw">rbw</a> (bitwarden.com, EU or self-hosted),
+    1Password through the <a href="https://developer.1password.com/docs/cli/">op CLI</a>. Each row carries the
+    vault's logo. <kbd>Enter</kbd> copies the password, <kbd>Ctrl</kbd> <kbd>C</kbd> the username,
+    <kbd>Shift</kbd> <kbd>Enter</kbd> types it, even on Wayland.</li>
+  <li><strong>Unlock in place</strong>: a locked vault is a row. Type the master password into the
+    launcher, or let the 1Password app ask.</li>
+  <li><strong>Calculator</strong>: math and percentages, every unit into every other (<code>2 min in year</code>,
+    <code>30 mpg in l/100km</code>), currencies at the ECB's daily rates, dates and countdowns
+    (<code>days until christmas</code>, <code>kw</code>), Unix timestamps and time zones
+    (<code>5pm berlin in tokyo</code>). English and German both work.</li>
+  <li><strong>T3 Code</strong>: active sessions show up in the search with whether the agent is working,
+    and for how long; <kbd>Enter</kbd> opens the session in T3 Code.</li>
+  <li><strong>Clockify</strong>: restart a recent entry or start a new one with <code>@project</code> and
+    <code>#tag</code>; the running timer stops at the same second.</li>
+  <li><strong>Emoji and system commands</strong>: <code>:rocket</code> copies 🚀, and lock, suspend, power off,
+    dark mode, Do Not Disturb and Night Light are a few keystrokes away.</li>
+  <li><strong>Set up in the launcher</strong>: the first open starts with <em>Getting Started</em>, which
+    connects Bitwarden, 1Password and Clockify and shows examples to try.</li>
+  <li><strong>Every action at hand</strong>: <kbd>Ctrl</kbd> <kbd>K</kbd> lists all actions of the selected item
+    with their shortcuts.</li>
+</ul>
+
+<p><img src="calculator.png" alt="2 min in year answered as 3.8 × 10⁻⁶ years" width="600"></p>
+<p><img src="actions.png" alt="The action panel for a password" width="600"></p>
+
+<h2>Install</h2>
+<p>Needs GNOME Shell 48, 49 or 50, and <code>rbw</code> and/or <code>op</code> set up. Download the zip from the
+<a href="https://github.com/TheSalaty/quick-launcher/releases/latest">latest release</a>, then go to your Downloads folder:</p>
+<pre><code>cd ~/Downloads</code></pre>
+<p>Run:</p>
+<pre><code>gnome-extensions install --force quick-launcher@julian.falcondev.de.shell-extension.zip</code></pre>
+<p>Log out and back in (Wayland cannot reload the shell in place), and enable it:</p>
+<pre><code>gnome-extensions enable quick-launcher@julian.falcondev.de</code></pre>
+<p class="note">Every shortcut (all of them can be changed), vaults, the 1Password unlock method, the default currency and the Clockify API key are in
+<code>gnome-extensions prefs quick-launcher@julian.falcondev.de</code>.</p>
+
+<footer>
+Source, keys and settings:
+<a href="https://github.com/TheSalaty/quick-launcher">github.com/TheSalaty/quick-launcher</a>. MIT licensed.
+<br>
+An independent project, not affiliated with or endorsed by Bitwarden, 1Password (AgileBits),
+Clockify (CAKE.com) or Raycast. The names are used only to say what the extension works with.
+</footer>
+
+</body>
+</html>

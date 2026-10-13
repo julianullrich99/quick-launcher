@@ -1,0 +1,40 @@
+#!/bin/bash
+# Fake 1Password CLI for tools/shoot.sh. The master password is "hunter2".
+S=${QL_FIXTURE_STATE:?}
+here=$(dirname "$0")
+session=
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --account) shift ;;
+    --session) session=$2; shift ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+set -- "${args[@]}"
+
+signed_in() { [ -f "$S/op-token" ] && [ "$session" = "$(cat "$S/op-token")" ]; }
+signed_out() {
+  echo "[ERROR] 2026/10/12 12:00:00 You are not currently signed in. Please run \`op signin --help\` for instructions" >&2
+  exit 1
+}
+
+case "$1" in
+  whoami) signed_in || signed_out; echo "URL: my.1password.com" ;;
+  signin)
+    read -r password
+    [ "$password" = hunter2 ] || { echo "[ERROR] 2026/10/12 12:00:00 Incorrect password." >&2; exit 1; }
+    echo token > "$S/op-token"
+    echo token ;;
+  signout) rm -f "$S/op-token" ;;
+  item)
+    signed_in || signed_out
+    case "$2" in
+      list) cat "$here/op-list.json" ;;
+      get)
+        if [[ " $* " == *" --otp "* ]]; then echo 654321
+        else echo "{\"fields\":[{\"id\":\"password\",\"purpose\":\"PASSWORD\",\"type\":\"CONCEALED\",\"value\":\"secret-$3\"}]}"
+        fi ;;
+    esac ;;
+esac

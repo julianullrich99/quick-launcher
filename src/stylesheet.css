@@ -1,82 +1,187 @@
-.bwl-box {
-  background-color: rgba(30, 30, 34, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 18px;
-  padding: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+/*
+ * Colors, borders and the selected/hover states come from the shell theme
+ * (.popup-menu-content, .popup-menu-item, StEntry), so light and dark styles
+ * and the accent color just work. This file only sets layout and sizes.
+ */
+
+.ql-box {
+  padding: 0;
+  spacing: 0;
+}
+
+/* Search bar */
+.ql-bar {
+  padding: 10px 10px 6px;
   spacing: 6px;
 }
 
-.bwl-entry {
-  font-size: 18pt;
-  padding: 10px 14px;
+.ql-back {
+  padding: 6px;
+}
+
+.ql-back StIcon {
+  icon-size: 16px;
+}
+
+.ql-entry {
+  font-size: 14pt;
+  padding: 9px 14px;
   border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.06);
-  border: none;
-  box-shadow: none;
-  color: #fff;
-  selection-background-color: rgba(53, 132, 228, 0.6);
-  selected-color: #fff;
 }
 
-.bwl-entry:focus {
-  box-shadow: none;
+.ql-entry-icon {
+  icon-size: 16px;
+  padding-right: 8px;
 }
 
-.bwl-entry-icon {
-  icon-size: 20px;
-  padding-right: 10px;
-  color: rgba(255, 255, 255, 0.6);
+/* List */
+.ql-scroll {
+  max-height: 420px;
 }
 
-.bwl-status {
-  padding: 4px 14px;
-  color: rgba(255, 255, 255, 0.6);
+.ql-list {
+  padding: 2px 6px 6px;
 }
 
-.bwl-scroll {
-  max-height: 440px;
+.ql-section {
+  padding: 10px 12px 4px;
+  font-size: 9pt;
+  font-weight: bold;
 }
 
-.bwl-row {
-  padding: 7px 12px;
-  border-radius: 10px;
+.ql-empty {
+  padding: 28px;
+}
+
+.ql-row {
+  padding: 6px 12px;
   spacing: 12px;
 }
 
-.bwl-row:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+.ql-icon-box {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
 }
 
-.bwl-row:selected {
-  background-color: #3584e4;
+.ql-row-icon {
+  icon-size: 16px;
 }
 
-.bwl-row-icon {
-  icon-size: 20px;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.bwl-row:selected .bwl-row-icon {
+/* Colored command tiles (Vicinae style) carry a white symbolic icon. */
+.ql-icon-tile .ql-row-icon {
+  icon-size: 14px;
   color: #fff;
 }
 
-.bwl-row-name {
+.ql-row-glyph {
+  font-size: 14pt;
+}
+
+.ql-row-labels {
+  spacing: 10px;
+}
+
+.ql-row-accessory {
+  font-size: 9.5pt;
+  font-feature-settings: "tnum";
+}
+
+.ql-row-accessory-active {
+  color: -st-accent-color;
   font-weight: bold;
-  color: #fff;
 }
 
-.bwl-row-subtitle {
-  font-size: 9pt;
-  color: rgba(255, 255, 255, 0.6);
+.ql-row:selected .ql-row-accessory-active {
+  color: inherit;
 }
 
-.bwl-row:selected .bwl-row-subtitle {
-  color: rgba(255, 255, 255, 0.85);
+.ql-row-answer {
+  padding: 10px 12px;
 }
 
-.bwl-hints {
-  padding: 4px 12px 2px;
+.ql-row-answer .ql-row-labels {
+  spacing: 2px;
+}
+
+.ql-row-answer .ql-row-title {
+  font-size: 17pt;
+  font-weight: bold;
+  font-feature-settings: "tnum";
+}
+
+/* Logo tile of the vault an item comes from, in the brand's color */
+.ql-source {
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.ql-source-icon {
+  icon-size: 13px;
+}
+
+.ql-source-bitwarden {
+  background-color: #175ddc;
+}
+
+.ql-source-1password {
+  background-color: #0b6bcb;
+}
+
+/* Footer */
+.ql-footer {
+  padding: 8px 16px 10px;
+  spacing: 8px;
+}
+
+.ql-footer-icon {
+  icon-size: 14px;
+}
+
+.ql-footer-text,
+.ql-footer-action {
+  font-size: 9.5pt;
+}
+
+.ql-footer-actions {
+  spacing: 8px;
+}
+
+.ql-footer-separator {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+}
+
+.ql-keys {
+  spacing: 3px;
+}
+
+/* Neutral grey reads on light and dark backgrounds alike. */
+.ql-kbd {
   font-size: 8.5pt;
-  color: rgba(255, 255, 255, 0.45);
+  min-width: 12px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  text-align: center;
+  background-color: rgba(128, 128, 128, 0.22);
+}
+
+/* Action panel (Ctrl+K) */
+.ql-panel {
+  margin: 8px;
+  min-width: 300px;
+}
+
+.ql-panel-row {
+  padding: 7px 10px;
+  spacing: 10px;
+}
+
+.ql-panel-icon {
+  icon-size: 16px;
+}
+
+.ql-panel-destructive {
+  color: #e01b24;
 }

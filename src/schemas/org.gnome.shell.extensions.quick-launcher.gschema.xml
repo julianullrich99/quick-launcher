@@ -1,13 +1,48 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.quick-launcher" path="/org/gnome/shell/extensions/quick-launcher/">
-    <key name="shortcut" type="as">
+    <!-- Passwords -->
+    <key name="open-shortcut" type="as">
       <default><![CDATA[['<Shift><Control>Return']]]></default>
-      <summary>Shortcut that opens the Bitwarden launcher</summary>
+      <summary>Shortcut that opens the launcher</summary>
+    </key>
+    <key name="bitwarden-enabled" type="b">
+      <default>true</default>
+      <summary>Search Bitwarden through rbw</summary>
     </key>
     <key name="rbw-path" type="s">
       <default>'rbw'</default>
       <summary>Path to the rbw binary</summary>
+    </key>
+    <key name="rbw-pinentry-bridge" type="b">
+      <default>false</default>
+      <summary>Answer rbw's master password prompt in the launcher</summary>
+      <description>Set by the preferences, which also point rbw's pinentry at the bridge script.</description>
+    </key>
+    <key name="rbw-pinentry-fallback" type="s">
+      <default>'pinentry'</default>
+      <summary>rbw's pinentry before the bridge was enabled; restored when it's disabled</summary>
+    </key>
+    <key name="onepassword-enabled" type="b">
+      <default>true</default>
+      <summary>Search 1Password through the op CLI</summary>
+    </key>
+    <key name="op-path" type="s">
+      <default>'op'</default>
+      <summary>Path to the 1Password CLI</summary>
+    </key>
+    <key name="onepassword-account" type="s">
+      <default>''</default>
+      <summary>1Password account (shorthand, sign-in address or ID); empty for the default</summary>
+    </key>
+    <key name="onepassword-unlock" type="s">
+      <choices>
+        <choice value="auto"/>
+        <choice value="app"/>
+        <choice value="password"/>
+      </choices>
+      <default>'auto'</default>
+      <summary>How to unlock 1Password: the desktop app, the master password in the launcher, or auto</summary>
     </key>
     <key name="clear-clipboard-seconds" type="i">
       <range min="0" max="3600"/>
@@ -23,21 +58,59 @@
       <default>8</default>
       <summary>Delay between typed characters in milliseconds</summary>
     </key>
+    <key name="browser-login" type="b">
+      <default>true</default>
+      <summary>Enter on an item with a website opens it and fills the login through the browser extension</summary>
+    </key>
+    <key name="bitwarden-autofill-keys" type="s">
+      <default>''</default>
+      <summary>The Bitwarden browser extension's "Autofill login" shortcut, e.g. &lt;Control&gt;&lt;Shift&gt;l; empty = only open the website</summary>
+    </key>
+    <key name="onepassword-autofill-keys" type="s">
+      <default>'&lt;Control&gt;backslash'</default>
+      <summary>The 1Password browser extension's autofill shortcut; empty = only open the website</summary>
+    </key>
+    <key name="autofill-delay-ms" type="i">
+      <default>2500</default>
+      <summary>How long the website gets to load before its login is filled</summary>
+    </key>
     <key name="submit-after-password" type="b">
       <default>true</default>
       <summary>Press Enter after typing a password</summary>
     </key>
-    <key name="last-query" type="s">
-      <default>''</default>
-      <summary>Last search query</summary>
+
+    <key name="launcher-shortcuts" type="a{sas}">
+      <default>{}</default>
+      <summary>Shortcuts inside the launcher that differ from the defaults</summary>
+      <description>Maps a shortcut id (see src/lib/shortcuts.ts) to GTK accelerators; an empty list turns it off.</description>
     </key>
-    <key name="last-entry-id" type="s">
-      <default>''</default>
-      <summary>Id of the last used entry</summary>
+    <key name="onboarding-done" type="b">
+      <default>false</default>
+      <summary>Getting Started was shown; until then the launcher opens with it</summary>
     </key>
+    <key name="recent" type="as">
+      <default>[]</default>
+      <summary>Recently used items, newest first</summary>
+    </key>
+    <key name="default-currency" type="s">
+      <default>'EUR'</default>
+      <summary>Currency that amounts like "100 usd" are converted to</summary>
+    </key>
+
+    <!-- T3 Code -->
+    <key name="t3code-enabled" type="b">
+      <default>true</default>
+      <summary>Search active T3 Code sessions (when T3 Code is installed)</summary>
+    </key>
+    <key name="t3code-data-dir" type="s">
+      <default>''</default>
+      <summary>T3 Code data directory; empty for ~/.t3/userdata</summary>
+    </key>
+
+    <!-- Clockify -->
     <key name="clockify-shortcut" type="as">
-      <default><![CDATA[['<Shift><Alt>Return']]]></default>
-      <summary>Shortcut that opens the Clockify launcher</summary>
+      <default><![CDATA[[]]]></default>
+      <summary>Shortcut that opens the launcher straight in Clockify (optional)</summary>
     </key>
     <key name="clockify-api-key" type="s">
       <default>''</default>
@@ -46,14 +119,6 @@
     <key name="clockify-api-url" type="s">
       <default>'https://api.clockify.me/api/v1'</default>
       <summary>Clockify API base URL (regional servers use e.g. https://euc1.clockify.me/api/v1)</summary>
-    </key>
-    <key name="clockify-last-query" type="s">
-      <default>''</default>
-      <summary>Last Clockify search query</summary>
-    </key>
-    <key name="clockify-last-entry-id" type="s">
-      <default>''</default>
-      <summary>Id of the last started Clockify entry</summary>
     </key>
   </schema>
 </schemalist>

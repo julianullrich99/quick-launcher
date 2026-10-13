@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Quick Launcher activation reminder
+Exec=/usr/lib/quick-launcher/remind-enable
+OnlyShowIn=GNOME;
+NoDisplay=true

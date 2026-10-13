@@ -1,0 +1,50 @@
+# Maintainer: TheSalaty <j.ullrich@creedle.io>
+_uuid=quick-launcher@julian.falcondev.de
+pkgname=gnome-shell-extension-quick-launcher
+pkgver=2.0.0
+pkgrel=1
+pkgdesc="Raycast-style GNOME launcher: Bitwarden (rbw) and 1Password in one search, Clockify timers, calculator with units, dates and time zones, emoji, system commands"
+arch=('any')
+url="https://github.com/TheSalaty/quick-launcher"
+license=('MIT')
+depends=('gnome-shell>=1:48')
+makedepends=('nodejs>=22' 'pnpm' 'glib2-devel' 'zip')
+optdepends=('rbw: Bitwarden vault'
+            '1password-cli: 1Password vault'
+            'sqlite: T3 Code sessions')
+install=quick-launcher.install
+source=("quick-launcher-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
+        'quick-launcher-remind-enable'
+        'quick-launcher-remind-enable.desktop')
+# Run updpkgsums after tagging the release.
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+_srcdir="quick-launcher-$pkgver"
+
+prepare() {
+  cd "$_srcdir"
+  # The build needs the TypeScript compiler and the GJS type packages; none of it ships.
+  pnpm install --frozen-lockfile --store-dir "$srcdir/pnpm-store"
+}
+
+build() {
+  cd "$_srcdir"
+  make assets
+}
+
+check() {
+  cd "$_srcdir"
+  make test
+}
+
+package() {
+  cd "$_srcdir"
+  install -d "$pkgdir/usr/share/gnome-shell/extensions/$_uuid"
+  cp -r dist/. "$pkgdir/usr/share/gnome-shell/extensions/$_uuid/"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm755 "$srcdir/quick-launcher-remind-enable" "$pkgdir/usr/lib/quick-launcher/remind-enable"
+  install -Dm644 "$srcdir/quick-launcher-remind-enable.desktop" "$pkgdir/etc/xdg/autostart/quick-launcher-remind-enable.desktop"
+}

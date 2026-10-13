@@ -1,0 +1,6 @@
+[{"id":"o1","title":"GitHub","category":"LOGIN","vault":{"id":"v1","name":"Private"},"urls":[{"href":"https://github.com","primary":true}],"additional_information":"julian99"},
+ {"id":"o2","title":"Netflix","category":"LOGIN","vault":{"id":"v1","name":"Private"},"urls":[{"href":"https://netflix.com"}],"additional_information":"julian@mail.de"},
+ {"id":"o3","title":"Sparkasse","category":"LOGIN","vault":{"id":"v1","name":"Private"},"additional_information":"12345678"},
+ {"id":"o4","title":"Home WiFi","category":"WIRELESS_ROUTER","vault":{"id":"v2","name":"Family"}},
+ {"id":"o5","title":"Passport","category":"IDENTITY","vault":{"id":"v1","name":"Private"},"additional_information":"Julian Ullrich"},
+ {"id":"o6","title":"Steam","category":"LOGIN","vault":{"id":"v2","name":"Family"},"additional_information":"jullrich"}]

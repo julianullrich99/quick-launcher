@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+uuid=quick-launcher@julian.falcondev.de
+
+if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -Fq "'$uuid'"; then
+  exit 0
+fi
+
+notification_id=$(gdbus call --session \
+  --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.Notifications.Notify \
+  quick-launcher 0 '' 'Enable Quick Launcher' \
+  'Quick Launcher is installed. Enable it once to use its password and Clockify shortcuts.' \
+  "['enable', 'Enable Quick Launcher']" '{}' 60000) || exit 0
+
+notification_id=${notification_id//[^0-9]/}
+
+timeout 60 gdbus monitor --session \
+  --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications | while IFS= read -r signal; do
+  case "$signal" in
+    *"ActionInvoked (uint32 $notification_id, 'enable')"*)
+      gnome-extensions enable "$uuid"
+      gdbus call --session \
+        --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.CloseNotification "$notification_id" >/dev/null
+      exit
+      ;;
+  esac
+done
