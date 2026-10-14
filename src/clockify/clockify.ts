@@ -7,7 +7,7 @@ import type {Action, Item, Launcher, Section, View} from '../lib/launcher.ts';
 import {notifyError, osd} from '../lib/output.ts';
 import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
-import {ClockifyApi} from './api.ts';
+import {ClockifyApi, RateLimitError} from './api.ts';
 import {distinctTasks, duration, parseDraft, timeAgo, type Project, type Tag, type Task} from './tasks.ts';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_async');
@@ -15,11 +15,29 @@ Gio._promisify(Gio.File.prototype, 'replace_contents_async');
 export const CLOCKIFY_COLOR = '#03a9f4';
 const RECENT_PREFIX = 'clockify:';
 
+// The Free plan allows 30 workspace requests per hour, so everything is fetched sparingly.
+const MINUTE = 60_000;
+/** Recent entries are refetched when the launcher opens, at most this often */
+const ENTRIES_MAX_AGE = 15 * MINUTE;
+/** Projects and tags rarely change; Reload fetches them right away */
+const CATALOG_MAX_AGE = 6 * 60 * MINUTE;
+/** The running timer is checked at most this often */
+export const RUNNING_MAX_AGE = 5 * MINUTE;
+/** Automatic requests stop at this many per hour, leaving the rest for starting and stopping timers */
+const BACKGROUND_BUDGET = 20;
+/** No automatic requests for this long after hitting the limit */
+const RATE_LIMIT_PAUSE = 15 * MINUTE;
+
 interface CacheData {
     account: string;
     tasks: Task[];
     projects: Project[];
     tags: Tag[];
+    /** When each part was fetched, so a restart or screen unlock doesn't refetch it */
+    entriesAt?: number;
+    catalogAt?: number;
+    runningAt?: number;
+    running?: Task | null;
 }
 
 function searchFields(task: Task): Field[] {
@@ -76,6 +94,12 @@ export class Clockify {
     #loading = false;
     #destroyed = false;
     #error: string | null = null;
+    /** The running timer as last fetched; undefined until then */
+    #running: Task | null | undefined;
+    #entriesAt = 0;
+    #catalogAt = 0;
+    #runningAt = 0;
+    #blockedUntil = 0;
     readonly #listeners = new Set<() => void>();
 
     readonly view: View;
@@ -109,9 +133,19 @@ export class Clockify {
         return this.#api.configured;
     }
 
-    /** Why the last refresh failed, if it did */
+    /** Why the last refresh failed, if it did and it wasn't just the request limit */
     get error(): string | null {
+        return this.#limited ? null : this.#error;
+    }
+
+    /** Why the shown data may be outdated, if it is */
+    get stale(): string | null {
         return this.#error;
+    }
+
+    /** Whether automatic requests have to wait */
+    get #limited(): boolean {
+        return Date.now() < this.#blockedUntil || this.#api.sentLastHour >= BACKGROUND_BUDGET;
     }
 
     /** Saves an API key once Clockify accepts it; resolves the account's name. */
@@ -125,7 +159,11 @@ export class Clockify {
 
     /** The timer running right now, as of the last refresh */
     get running(): Task | undefined {
-        return this.#index.items.find(t => t.running);
+        return this.#running === undefined ? this.#index.items.find(t => t.running) : this.#running ?? undefined;
+    }
+
+    #isRunning(task: Task): boolean {
+        return !task.isNew && task.id === this.running?.id;
     }
 
     /** Calls `listener` whenever the entries or the running timer change; returns an unsubscribe function. */
@@ -139,6 +177,12 @@ export class Clockify {
         this.#index = new SearchIndex<Task>([], searchFields);
         this.#account = null;
         this.#error = null;
+        this.#running = undefined;
+        this.#entriesAt = this.#catalogAt = this.#runningAt = this.#blockedUntil = 0;
+        this.#changed();
+    }
+
+    #changed() {
         this.#launcher.refresh();
         this.#listeners.forEach(l => l());
     }
@@ -196,7 +240,7 @@ export class Clockify {
         if (!id.startsWith(RECENT_PREFIX))
             return null;
         const task = this.#index.items.find(t => t.id === id.slice(RECENT_PREFIX.length));
-        return task && !task.running ? this.#item(task) : null;
+        return task && !this.#isRunning(task) ? this.#item(task) : null;
     }
 
     #viewSections(query: string): Section[] {
@@ -233,16 +277,17 @@ export class Clockify {
                 actions: [{title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => void this.#start(task)}],
             };
         }
+        const running = this.#isRunning(task);
         return {
             id: task.id,
             icon: {
-                name: task.running ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
+                name: running ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
                 style: task.color ? `color: ${task.color};` : undefined,
             },
             title: task.description || '(no description)',
             subtitle: [project, task.clientName, tags].filter(Boolean).join('  ·  '),
-            accessory: task.running ? `● ${duration(task.lastStart)}` : timeAgo(task.lastStart),
-            actions: task.running
+            accessory: running ? `● ${duration(this.running?.lastStart)}` : timeAgo(task.lastStart),
+            actions: running
                 ? [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.stop()}, startNew]
                 : [{title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => void this.#start(task)}, startNew],
         };
@@ -267,13 +312,58 @@ export class Clockify {
 
     // --- Data ---
 
-    /** Shows cached entries right away and refreshes them in the background. */
+    /**
+     * Shows cached entries right away and refreshes them in the background
+     * when they are older than ENTRIES_MAX_AGE, or always with `force`.
+     */
     load(force = false) {
         if (!this.configured)
             return;
         this.#loadCache();
-        if (!this.#loading || force)
-            void this.#reload();
+        if (this.#loading || (!force && (this.#limited || Date.now() - this.#entriesAt < ENTRIES_MAX_AGE)))
+            return;
+        void this.#reload(force);
+    }
+
+    /** Checks which timer runs, with one request, unless that was done within RUNNING_MAX_AGE. */
+    async refreshRunning() {
+        if (!this.configured || this.#loading || this.#limited || Date.now() - this.#runningAt < RUNNING_MAX_AGE)
+            return;
+        this.#loadCache();
+        this.#loading = true;
+        try {
+            const entry = await this.#api.running();
+            if (this.#destroyed)
+                return;
+            this.#setRunning(entry ? distinctTasks([entry], this.#projects, this.#tags)[0] : null);
+        } catch (e) {
+            this.#failed(e);
+        } finally {
+            this.#loading = false;
+        }
+    }
+
+    #setRunning(task: Task | null) {
+        this.#running = task;
+        this.#runningAt = Date.now();
+        this.#error = null;
+        this.#changed();
+        this.#save();
+    }
+
+    #save() {
+        if (!this.#account)
+            return;
+        this.#cache.save({
+            account: this.#account,
+            tasks: [...this.#index.items],
+            projects: this.#projects,
+            tags: this.#tags,
+            entriesAt: this.#entriesAt,
+            catalogAt: this.#catalogAt,
+            runningAt: this.#runningAt,
+            running: this.#running,
+        }).catch(e => console.error('quick-launcher: Could not write Clockify cache', e));
     }
 
     #loadCache() {
@@ -281,7 +371,12 @@ export class Clockify {
         if (this.#account === account)
             return;
         this.#account = account;
-        const {tasks = [], projects = [], tags = []} = this.#cache.load(account) ?? {};
+        const {tasks = [], projects = [], tags = [], entriesAt = 0, catalogAt = 0, runningAt = 0, running} =
+            this.#cache.load(account) ?? {};
+        this.#running = running;
+        this.#entriesAt = entriesAt;
+        this.#catalogAt = catalogAt;
+        this.#runningAt = runningAt;
         this.#setData(tasks, projects, tags);
     }
 
@@ -289,16 +384,18 @@ export class Clockify {
         this.#projects = projects;
         this.#tags = tags;
         this.#index = new SearchIndex(tasks, searchFields);
-        this.#launcher.refresh();
-        this.#listeners.forEach(l => l());
+        this.#changed();
     }
 
-    async #reload() {
+    async #reload(force: boolean) {
         this.#loading = true;
         try {
             const account = this.#api.account;
+            const catalog = force || Date.now() - this.#catalogAt >= CATALOG_MAX_AGE;
             const [entries, allProjects, allTags] = await Promise.all([
-                this.#api.recent(), this.#api.projects(), this.#api.tags(),
+                this.#api.recent(),
+                catalog ? this.#api.projects() : this.#projects,
+                catalog ? this.#api.tags() : this.#tags,
             ]);
             if (this.#destroyed)
                 return;
@@ -310,24 +407,34 @@ export class Clockify {
             const tasks = distinctTasks(entries, projects, tags);
 
             this.#account = account;
+            this.#entriesAt = this.#runningAt = Date.now();
+            if (catalog)
+                this.#catalogAt = this.#entriesAt;
+            this.#running = tasks.find(t => t.running) ?? null;
             this.#error = null;
             this.#setData(tasks, projects, tags);
             if (this.#launcher.view === this.view)
                 this.#launcher.setStatus(null);
 
-            this.#cache.save({account, tasks, projects, tags}).catch(e =>
-                console.error('quick-launcher: Could not write Clockify cache', e));
+            this.#save();
         } catch (e) {
-            if (this.#destroyed)
-                return;
-            console.error('quick-launcher: Clockify request failed', e);
-            this.#error = (e as Error).message;
-            this.#launcher.refresh();
-            if (this.#launcher.view === this.view)
-                this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
+            this.#failed(e);
         } finally {
             this.#loading = false;
         }
+    }
+
+    #failed(e: unknown) {
+        if (this.#destroyed)
+            return;
+        if (e instanceof RateLimitError)
+            this.#blockedUntil = Date.now() + RATE_LIMIT_PAUSE;
+        else
+            console.error('quick-launcher: Clockify request failed', e);
+        this.#error = (e as Error).message;
+        this.#changed();
+        if (this.#launcher.view === this.view)
+            this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
     }
 
     // --- Actions ---
@@ -341,8 +448,11 @@ export class Clockify {
         try {
             await this.#api.start(task);
             osd('media-playback-start-symbolic', task.description || task.projectName || 'Timer started');
-            void this.#reload();
+            // Known without asking; the entry list catches up the next time the launcher opens.
+            this.#entriesAt = 0;
+            this.#setRunning({...task, lastStart: new Date().toISOString(), running: true});
         } catch (e) {
+            this.#failed(e);
             notifyError('Could not start Clockify timer', e);
         }
     }
@@ -354,8 +464,10 @@ export class Clockify {
                 osd('media-playback-stop-symbolic', 'Timer stopped');
             else
                 Main.notify('Clockify', 'No timer running');
-            void this.#reload();
+            this.#entriesAt = 0;
+            this.#setRunning(null);
         } catch (e) {
+            this.#failed(e);
             notifyError('Could not stop Clockify timer', e);
         }
     }

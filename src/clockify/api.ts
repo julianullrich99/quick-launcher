@@ -7,9 +7,20 @@ import type {Project, Tag, TimeEntry} from './tasks.ts';
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 
 export class ClockifyError extends Error {
-    constructor(message: string) {
+    readonly status: number;
+
+    constructor(message: string, status = 0) {
         super(message);
         this.name = 'ClockifyError';
+        this.status = status;
+    }
+}
+
+/** HTTP 429: the Free plan allows only 30 workspace requests per hour. */
+export class RateLimitError extends ClockifyError {
+    constructor() {
+        super('Clockify request limit reached (Free plan: 30 per hour), showing the last known state', 429);
+        this.name = 'RateLimitError';
     }
 }
 
@@ -25,6 +36,12 @@ export interface NewEntry {
     tagIds: string[];
     billable: boolean;
 }
+
+/**
+ * When the last workspace requests were sent; those count towards Clockify's limit, /user doesn't.
+ * Module-level, so it survives the extension being disabled and enabled again on screen lock.
+ */
+const sent: number[] = [];
 
 function now(): string {
     return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -49,6 +66,14 @@ export class ClockifyApi {
         return `${this.#settings.get_string('clockify-api-url')}|${this.#settings.get_string('clockify-api-key')}`;
     }
 
+    /** Workspace requests sent within the last hour */
+    get sentLastHour(): number {
+        const hourAgo = Date.now() - 3_600_000;
+        while (sent.length && sent[0] < hourAgo)
+            sent.shift();
+        return sent.length;
+    }
+
     /** Identifies the account, so a cache never shows another account's data. */
     get account(): string {
         return GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this.#credentials, -1) ?? '';
@@ -66,6 +91,8 @@ export class ClockifyApi {
         const message = Soup.Message.new(method, `${base}${path}${params ? `?${params}` : ''}`);
         if (!message)
             throw new ClockifyError(`Invalid API URL: ${base}`);
+        if (path.startsWith('/workspaces/'))
+            sent.push(Date.now());
 
         message.request_headers.append('X-Api-Key', key ?? this.#settings.get_string('clockify-api-key'));
         if (body !== undefined) {
@@ -75,14 +102,17 @@ export class ClockifyApi {
 
         const bytes = await this.#session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, this.#cancellable);
         const text = new TextDecoder().decode(bytes.toArray());
-        const status = message.get_status();
+        // get_status() throws for codes missing from Soup.Status, like 429.
+        const status = message.status_code;
+        if (status === 429)
+            throw new RateLimitError();
         if (status < 200 || status >= 300) {
             // Clockify answers with JSON {message}; proxies and wrong URLs with HTML.
             let detail = message.get_reason_phrase() ?? '';
             try {
                 detail = JSON.parse(text).message || detail;
             } catch {}
-            throw new ClockifyError(`${status} ${detail}`.trim());
+            throw new ClockifyError(`${status} ${detail}`.trim(), status);
         }
         return (text ? JSON.parse(text) : null) as T;
     }
@@ -116,6 +146,13 @@ export class ClockifyApi {
         return this.#request('GET', await this.#entriesPath(), {query: {'hydrated': true, 'page-size': 200}});
     }
 
+    /** The running time entry, or null */
+    async running(): Promise<TimeEntry | null> {
+        const entries = await this.#request<TimeEntry[]>('GET', await this.#entriesPath(),
+            {query: {'in-progress': true, 'hydrated': true}});
+        return entries?.[0] ?? null;
+    }
+
     async projects(): Promise<Project[]> {
         const {workspace} = await this.#user();
         return this.#request('GET', `/workspaces/${workspace}/projects`, {query: {'archived': false, 'page-size': 500}});
@@ -128,12 +165,15 @@ export class ClockifyApi {
 
     /** Stops the running timer at `end`. Resolves false if none was running. */
     async stop(end = now()): Promise<boolean> {
-        const path = await this.#entriesPath();
-        const running = await this.#request<TimeEntry[]>('GET', path, {query: {'in-progress': true}});
-        if (!running?.length)
-            return false;
-        await this.#request('PATCH', path, {body: {end}});
-        return true;
+        // One request instead of asking first: Clockify answers 404 when no timer runs.
+        try {
+            await this.#request('PATCH', await this.#entriesPath(), {body: {end}});
+            return true;
+        } catch (e) {
+            if (e instanceof ClockifyError && (e.status === 404 || e.status === 400))
+                return false;
+            throw e;
+        }
     }
 
     /** Starts a timer, stopping the running one at the same instant so there's no gap. */

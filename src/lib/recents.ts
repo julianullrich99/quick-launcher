@@ -1,6 +1,7 @@
 import type Gio from 'gi://Gio';
 
-const MAX = 8;
+/** Enough to put often searched items first while typing; the empty start view shows fewer */
+const MAX = 30;
 
 /** Ids of recently used items, newest first, kept in settings. */
 export class Recents {

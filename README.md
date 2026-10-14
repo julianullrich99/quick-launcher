@@ -97,7 +97,8 @@ usual. *Getting Started* stays available as a command.
 
 When the launcher opens, your recently used passwords, entries and emoji are listed first, then
 all commands. Typing searches everything at once and groups the results: a calculator answer on
-top, then passwords, Clockify entries and commands. Only items matching every word you typed are
+top, then whatever of it you used recently (newest first, so what you search often is right there), then passwords,
+Clockify entries and commands. Only items matching every word you typed are
 shown. Below them, *Use “…” with* starts a timer with the text or searches passwords or emoji
 for it.
 
@@ -223,7 +224,15 @@ Matching recent entries show up in the search, with when you last worked on them
 command while a timer runs, with how long it runs. Starting a timer stops the running one at the same second, so there are no gaps.
 
 While a timer runs, the top bar shows it and how long it runs, also for timers started in Clockify
-itself; its menu stops the timer. Until Clockify is connected, *Connect Clockify* is a command.
+itself (checked every 5 minutes while you're at the computer); its menu stops the timer. Until Clockify is connected,
+*Connect Clockify* is a command.
+
+Clockify's Free plan allows only 30 requests per hour, so the extension asks sparingly: one request every 5 minutes for
+the running timer (none after 10 idle minutes or while the screen is locked), recent entries at most every 15 minutes
+when the launcher opens, projects and tags every 6 hours (*Reload* fetches everything right away). Switching timers
+costs two requests. When was fetched what is cached on disk, so unlocking the screen doesn't refetch anything, and
+background requests stop at 20 per hour to keep the rest for starting and stopping timers. When the limit is hit
+anyway, the top bar dims and shows the last known timer, and automatic requests pause for 15 minutes.
 
 <p align="center">
   <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">
