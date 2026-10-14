@@ -276,15 +276,20 @@ export class Passwords {
 
     #item(item: VaultItem): Item {
         const run = (verb: 'copy' | 'type', what: What) => () => void this.#perform(item, verb, what);
-        const website = this.#settings.get_boolean('browser-login') ? websiteOf(item) : null;
+        // A locked vault's item is only a cached name: Enter unlocks it, and only then is there a website to open.
+        const unlocked = this.#state(item.vault).status === 'unlocked';
+        const website = unlocked && this.#settings.get_boolean('browser-login') ? websiteOf(item) : null;
         return {
             id: item.id,
             icon: {name: KIND_ICONS[item.kind]},
             title: item.name || '(unnamed)',
             subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
-            accessory: this.#state(item.vault).status === 'unlocked' ? undefined : 'Locked',
+            accessory: unlocked ? undefined : 'Locked',
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
             actions: [
+                ...unlocked ? [] : [{
+                    title: `Unlock ${item.vault.name}`, icon: 'system-lock-screen-symbolic', run: () => void this.connect(item.vault),
+                } satisfies Action],
                 ...website ? [{
                     title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, website),
                 } satisfies Action] : [],
@@ -533,8 +538,8 @@ export class Passwords {
 
     async #perform(found: VaultItem, verb: 'copy' | 'type', what: What, retry = true) {
         this.#recents.add(`${RECENT_PREFIX}${found.id}`);
-        // The username is cached, everything else needs the vault unlocked; that asks right in the launcher.
-        const item = what === 'user' ? found : await this.#unlocked(found);
+        // Only names are cached, so everything needs the vault unlocked; that asks right in the launcher.
+        const item = await this.#unlocked(found);
         if (!item) {
             if (!this.#destroyed && this.#state(found.vault).status === 'unlocked')
                 Main.notify(found.vault.name, `${found.name} is no longer in the vault`);

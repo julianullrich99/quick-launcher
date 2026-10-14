@@ -18,7 +18,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
   [`op` CLI](https://developer.1password.com/docs/cli/)), each entry tagged with its vault's logo
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
-- Items stay searchable while their vault is locked; using one asks to unlock it first
+- Items stay searchable by name while their vault is locked; <kbd>Enter</kbd> on one unlocks the vault first
 - Open an item's website and log in through the Bitwarden or 1Password browser extension
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
@@ -150,7 +150,9 @@ own lock, so for Bitwarden items the website just opens; to fill those too, set 
 well. Turn the feature off there to copy the password on <kbd>Enter</kbd> again.
 
 A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
-<kbd>Enter</kbd> on it.
+<kbd>Enter</kbd> on it. Its items still show up by name, marked *Locked*; <kbd>Enter</kbd> on one
+unlocks the vault too, and only then are its username, folder and website shown and usable. The
+other shortcuts ask to unlock first, then copy or type right away.
 
 <p align="center">
   <img src="docs/unlock.png" alt="Typing the 1Password master password into the launcher" width="600">
@@ -271,9 +273,9 @@ need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
 ## Notes
 
-- Only names, usernames, folders and URLs are kept, in memory and in
+- Only item names (and their IDs) are kept in
   `~/.cache/quick-launcher/passwords.json` (readable only by you), so items show up while their
-  vault is locked. Passwords and TOTP codes are never stored; they are fetched when you use them.
+  vault is locked. Usernames, folders and URLs are only in memory while the vault is unlocked. Passwords and TOTP codes are never stored; they are fetched when you use them.
   Turning a vault off deletes its cached items.
 - The 1Password session from a typed master password expires after 30 minutes without use. The
   vault then shows up as locked again.
