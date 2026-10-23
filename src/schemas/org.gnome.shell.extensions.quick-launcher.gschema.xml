@@ -35,6 +35,11 @@
       <default>''</default>
       <summary>1Password account (shorthand, sign-in address or ID); empty for the default</summary>
     </key>
+    <key name="unlock-with" type="a{s(ss)}">
+      <default>{}</default>
+      <summary>Password items that unlock a vault: vault id → (item id, item name)</summary>
+      <description>The item's password (e.g. Bitwarden's master password kept in 1Password) is entered instead of asking.</description>
+    </key>
     <key name="onepassword-unlock" type="s">
       <choices>
         <choice value="auto"/>
@@ -60,7 +65,7 @@
     </key>
     <key name="browser-login" type="b">
       <default>true</default>
-      <summary>Enter on an item with a website opens it and fills the login through the browser extension</summary>
+      <summary>“Open and Log In” opens an item's website and fills the login through the browser extension</summary>
     </key>
     <key name="bitwarden-autofill-keys" type="s">
       <default>''</default>

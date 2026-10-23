@@ -325,13 +325,13 @@ export class Launcher {
     }
 
     /** Opens `view` on top of the current one; Esc or Backspace goes back. */
-    push(view: View, query = '') {
+    push(view: View, query = '', selectId?: string) {
         const current = this.#stack.at(-1);
         if (current) {
             current.query = this.#entry.get_text();
             current.selectId = this.selected?.id;
         }
-        this.#stack.push({view, query});
+        this.#stack.push({view, query, selectId});
         this.#showFrame();
     }
 

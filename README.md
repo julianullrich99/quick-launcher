@@ -19,6 +19,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
 - Items stay searchable by name while their vault is locked; <kbd>Enter</kbd> on one unlocks the vault first
+- Unlock Bitwarden with its master password stored in 1Password (or the other way round)
 - Open an item's website and log in through the Bitwarden or 1Password browser extension
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
@@ -132,7 +133,8 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 
 | Key | Action |
 | --- | --- |
-| <kbd>Enter</kbd> | open the website and log in (copy password for items without one) |
+| <kbd>Enter</kbd> | show the item: username, password, TOTP code and websites, <kbd>Enter</kbd> copies one, <kbd>Shift</kbd><kbd>Enter</kbd> types it |
+| <kbd>Ctrl</kbd><kbd>O</kbd> | open the website and log in |
 | <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
 | <kbd>Ctrl</kbd><kbd>C</kbd> | copy username (with text selected in the search field, copies that text instead) |
 | <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
@@ -140,19 +142,31 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 | <kbd>Alt</kbd><kbd>T</kbd> | copy TOTP code (<kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> types it) |
 | <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
 
-**Logging in on a website:** for a login with a website, <kbd>Enter</kbd> opens it in your default
+<p align="center">
+  <img src="docs/item.png" alt="An item's username, password, one-time code and website; Enter copies the selected one" width="600">
+</p>
+
+**Logging in on a website:** for a login with a website, <kbd>Ctrl</kbd><kbd>O</kbd> (or <kbd>Enter</kbd> on
+the website in the item) opens it in your default
 browser (a new tab if it is running). For 1Password items it then waits 2.5 seconds for the page
 to load and presses <kbd>Ctrl</kbd><kbd>\\</kbd>, the 1Password browser extension's autofill
 shortcut, which fills only logins that match the page; the keys are only pressed if the browser
 has focus. The 1Password extension unlocks together with the app. The Bitwarden extension has its
 own lock, so for Bitwarden items the website just opens; to fill those too, set the extension's
 *Autofill login* shortcut (in Chrome under `chrome://extensions/shortcuts`) in the settings as
-well. Turn the feature off there to copy the password on <kbd>Enter</kbd> again.
+well. Turn the feature off there to only open the website.
 
 A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
 <kbd>Enter</kbd> on it. Its items still show up by name, marked *Locked*; <kbd>Enter</kbd> on one
-unlocks the vault too, and only then are its username, folder and website shown and usable. The
-other shortcuts ask to unlock first, then copy or type right away.
+unlocks the vault and then shows the item, ready to copy. The other shortcuts ask to unlock
+first, then copy or type right away.
+
+**Unlocking one vault with another:** keep Bitwarden's master password in 1Password (or the
+other way round), open the action panel (<kbd>Ctrl</kbd><kbd>K</kbd>) on that item and choose
+*Use to Unlock Bitwarden*. From then on, unlocking Bitwarden takes the password from that item,
+unlocking 1Password first if needed, instead of asking. If it is wrong, you are asked as usual.
+The settings show the linked item and can remove it. For 1Password this only applies when it is
+unlocked with the master password rather than the desktop app.
 
 <p align="center">
   <img src="docs/unlock.png" alt="Typing the 1Password master password into the launcher" width="600">

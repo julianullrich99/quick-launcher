@@ -40,6 +40,8 @@ export interface Vault {
     readonly enabled: boolean;
     /** The CLI it needs is installed. */
     readonly installed: boolean;
+    /** Unlocking asks for a master password, which another vault's item can answer. */
+    readonly asksPassword: boolean;
 
     /** One-time setup before the first unlock, e.g. the account email. Resolves false if cancelled. */
     setUp?(prompter: Prompter): Promise<boolean>;

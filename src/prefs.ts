@@ -36,6 +36,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         bitwarden.add(rbwConfigRow(settings, 'email', 'Account email'));
         bitwarden.add(rbwConfigRow(settings, 'server', 'Server (empty = bitwarden.com)'));
         bitwarden.add(this.#pinentryRow(settings));
+        bitwarden.add(unlockWithRow(settings, 'bitwarden', 'Bitwarden'));
         page.add(bitwarden);
 
         const onePassword = new Adw.PreferencesGroup({
@@ -68,13 +69,14 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         const unlockId = settings.connect('changed::onepassword-unlock', syncUnlock);
         unlock.connect('destroy', () => settings.disconnect(unlockId));
         onePassword.add(unlock);
+        onePassword.add(unlockWithRow(settings, '1password', '1Password'));
         page.add(onePassword);
 
         const browser = new Adw.PreferencesGroup({
             title: 'Log in on websites',
-            description: 'Enter on an item with a website opens it in your browser, then presses the autofill shortcut of the Bitwarden or 1Password browser extension. Set the same shortcut in the browser, e.g. chrome://extensions/shortcuts',
+            description: '“Open and Log In” (Ctrl+O on an item, or Enter on its website) opens it in your browser, then presses the autofill shortcut of the Bitwarden or 1Password browser extension. Set the same shortcut in the browser, e.g. chrome://extensions/shortcuts',
         });
-        browser.add(switchRow(settings, 'browser-login', 'Open website and log in on Enter'));
+        browser.add(switchRow(settings, 'browser-login', 'Open website and log in'));
         for (const [key, title] of [
             ['bitwarden-autofill-keys', 'Bitwarden extension “Autofill login” shortcut (empty = only open)'],
             ['onepassword-autofill-keys', '1Password extension autofill shortcut'],
@@ -308,6 +310,33 @@ function launcherShortcutRow(settings: Gio.Settings, id: ShortcutId, title: stri
         dialog.add_controller(controller);
         dialog.present(row);
     });
+    return row;
+}
+
+/** The item whose password unlocks a vault; chosen in the launcher with “Use to Unlock …”. */
+function unlockWithRow(settings: Gio.Settings, vaultId: string, vaultName: string): Adw.ActionRow {
+    type Links = Record<string, [string, string]>;
+    const row = new Adw.ActionRow({title: 'Master password from'});
+    const clear = new Gtk.Button({
+        icon_name: 'edit-clear-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Ask for the password again',
+    });
+    clear.connect('clicked', () => {
+        const links = settings.get_value('unlock-with').deepUnpack() as Links;
+        delete links[vaultId];
+        settings.set_value('unlock-with', new GLib.Variant('a{s(ss)}', links));
+    });
+    row.add_suffix(clear);
+    const sync = () => {
+        const link = (settings.get_value('unlock-with').deepUnpack() as Links)[vaultId];
+        const vault = link?.[0].startsWith('1password:') ? '1Password' : 'Bitwarden';
+        row.subtitle = link
+            ? `“${link[1]}” in ${vault}, entered for you`
+            : `Typed in. To use a password from another vault, choose “Use to Unlock ${vaultName}” on its item in the launcher (Ctrl+K)`;
+        clear.visible = !!link;
+    };
+    sync();
+    const id = settings.connect('changed::unlock-with', sync);
+    row.connect('destroy', () => settings.disconnect(id));
     return row;
 }
 

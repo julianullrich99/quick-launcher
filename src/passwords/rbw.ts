@@ -71,6 +71,8 @@ export class RbwVault implements Vault {
     readonly color = '#175ddc';
     readonly website = 'https://github.com/doy/rbw#installation';
     readonly enabledKey = 'bitwarden-enabled';
+    /** Through the pinentry bridge, which Connect sets up */
+    readonly asksPassword = true;
     readonly #settings: Gio.Settings;
 
     constructor(settings: Gio.Settings) {

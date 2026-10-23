@@ -72,6 +72,10 @@ export class OnePasswordVault implements Vault {
         return findProgram(this.#settings.get_string('op-path') || 'op') !== null;
     }
 
+    get asksPassword(): boolean {
+        return !this.#usesApp;
+    }
+
     get #usesApp(): boolean {
         const method = this.#settings.get_string('onepassword-unlock');
         if (method !== 'auto')

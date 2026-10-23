@@ -16,11 +16,12 @@ export const SHORTCUTS = [
 
     {id: 'copy-password', group: 'passwords', title: 'Copy password', defaults: ['<Shift><Control>c']},
     {id: 'copy-username', group: 'passwords', title: 'Copy username', defaults: ['<Control>c']},
-    {id: 'type-password', group: 'passwords', title: 'Type password', defaults: ['<Shift>Return']},
+    {id: 'type-password', group: 'passwords', title: 'Type password (in item details: the selected field)', defaults: ['<Shift>Return']},
     {id: 'type-login', group: 'passwords', title: 'Type username and password', defaults: ['<Control>Return']},
     {id: 'type-username', group: 'passwords', title: 'Type username', defaults: ['<Shift><Alt>u']},
     {id: 'copy-totp', group: 'passwords', title: 'Copy TOTP code', defaults: ['<Alt>t']},
     {id: 'type-totp', group: 'passwords', title: 'Type TOTP code', defaults: ['<Shift><Alt>t']},
+    {id: 'open-website', group: 'passwords', title: 'Open website and log in', defaults: ['<Control>o']},
     {id: 'sync-vaults', group: 'passwords', title: 'Sync vaults', defaults: ['<Control>r']},
     {id: 'lock-vaults', group: 'passwords', title: 'Lock vaults', defaults: ['<Control>l']},
     {id: 'vault-server', group: 'passwords', title: 'Use another Bitwarden server', defaults: ['<Control>s']},
