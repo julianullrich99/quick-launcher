@@ -394,9 +394,18 @@ class Parser {
 }
 
 function add(a: Quantity, b: Quantity, sign: number): Quantity {
+    // A plain number takes the other side's unit: "254 + 548 yuan" is 802 yuan.
+    a = adopt(a, b);
+    b = adopt(b, a);
     if (!sameDim(a.dim, b.dim))
         throw new CalcError('Cannot add different kinds of units');
     return {value: a.value + sign * b.value, dim: a.dim, unit: a.unit ?? b.unit, computed: true};
+}
+
+function adopt(q: Quantity, other: Quantity): Quantity {
+    if (q.unit || q.percent || !sameDim(q.dim, DIMENSIONLESS) || !other.unit || other.unit.offset !== undefined)
+        return q;
+    return {...q, value: q.value * other.unit.factor, dim: other.dim, unit: other.unit};
 }
 
 function multiply(a: Quantity, b: Quantity, sign = 1): Quantity {
