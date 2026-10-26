@@ -3,7 +3,7 @@ import St from 'gi://St';
 
 import {evaluate} from './calc/calculator.ts';
 import type {ExchangeRates} from './calc/rates.ts';
-import type {Clockify} from './clockify/clockify.ts';
+import type {TimeTracking} from './timer/tracking.ts';
 import type {Emoji} from './emoji/emoji.ts';
 import type {Item, Launcher, Section, View} from './lib/launcher.ts';
 import {osd} from './lib/output.ts';
@@ -22,7 +22,7 @@ export interface RootProviders {
     recents: Recents;
     rates: ExchangeRates;
     passwords: Passwords;
-    clockify: Clockify;
+    tracking: TimeTracking;
     emoji: Emoji;
     system: System;
     t3code: T3Code;
@@ -31,7 +31,7 @@ export interface RootProviders {
 
 /**
  * The start view: recent items and commands when empty; while typing, the
- * calculator, matching passwords, Clockify entries and commands at once.
+ * calculator, matching passwords, time entries and commands at once.
  */
 export class Root {
     readonly #p: RootProviders;
@@ -47,7 +47,7 @@ export class Root {
             search: query => this.#search(query),
             onOpen: () => {
                 this.#p.passwords.reload();
-                this.#p.clockify.load();
+                this.#p.tracking.load();
                 this.#p.t3code.load();
                 this.#p.rates.refresh(() => this.#p.launcher.refresh());
             },
@@ -63,14 +63,14 @@ export class Root {
     }
 
     #commands(): Item[] {
-        const {passwords, clockify, emoji, system, t3code} = this.#p;
+        const {passwords, tracking, emoji, system, t3code} = this.#p;
         const t3 = t3code.command();
-        const connectClockify = this.onboarding.clockifyCommand();
+        const connectTracking = this.onboarding.trackingCommand();
         return [
             ...passwords.vaultRows(),
             ...t3 ? [t3] : [],
-            ...clockify.commands(),
-            ...connectClockify ? [connectClockify] : [],
+            ...tracking.commands(),
+            ...connectTracking ? [connectTracking] : [],
             ...passwords.commands(),
             emoji.command(),
             ...system.commands(),
@@ -79,7 +79,7 @@ export class Root {
                 id: 'command:settings',
                 icon: {name: 'preferences-system-symbolic', color: '#6f6f78'},
                 title: 'Quick Launcher Settings',
-                subtitle: 'Shortcuts, vaults, Clockify',
+                subtitle: 'Shortcuts, vaults, time tracking',
                 accessory: 'Command',
                 keywords: 'preferences einstellungen config',
                 actions: [{title: 'Open Settings', icon: 'preferences-system-symbolic', run: () => {
@@ -93,10 +93,10 @@ export class Root {
     #search(query: string): Section[] {
         const text = query.trim();
         if (!text) {
-            const {recents, clockify, passwords, emoji, t3code} = this.#p;
+            const {recents, tracking, passwords, emoji, t3code} = this.#p;
             // The running timer is under Commands as "Stop Timer", not here where Enter would stop it.
             const recent = recents.ids
-                .map(id => passwords.recent(id) ?? clockify.recent(id) ?? t3code.recent(id) ?? emoji.recent(id))
+                .map(id => passwords.recent(id) ?? tracking.recent(id) ?? t3code.recent(id) ?? emoji.recent(id))
                 .filter((item): item is Item => item !== null)
                 .slice(0, 6);
             return [
@@ -121,7 +121,7 @@ export class Root {
             sections.push({title: 'Emoji', items: this.#p.emoji.search(text.slice(1), 8)});
         sections.push({title: 'Passwords', items: this.#p.passwords.search(text, 5)});
         sections.push({title: 'T3 Code', items: this.#p.t3code.search(text, 5)});
-        sections.push({title: 'Clockify', items: this.#p.clockify.search(text, 4)});
+        sections.push({title: this.#p.tracking.name, items: this.#p.tracking.search(text, 4)});
         if (!strong)
             sections.push({title: 'Commands', items: commands});
         // Offer "Start timer …" etc. only when the query isn't obviously something else.
@@ -165,8 +165,8 @@ export class Root {
     }
 
     #fallbacks(text: string): Item[] {
-        const {launcher, passwords, clockify, emoji} = this.#p;
-        const fallback = clockify.fallback(text);
+        const {launcher, passwords, tracking, emoji} = this.#p;
+        const fallback = tracking.fallback(text);
         return [
             ...fallback ? [fallback] : [],
             {

@@ -32,8 +32,8 @@ export const SHORTCUTS = [
     {id: 'reload-clockify', group: 'clockify', title: 'Reload entries', defaults: ['<Control>r']},
     {id: 'start-new', group: 'clockify', title: 'Start as a new entry', defaults: ['<Shift>Return']},
     {id: 'start-timer', group: 'clockify', title: 'Start a timer (Getting Started)', defaults: ['<Alt>t']},
-    {id: 'clockify-keys', group: 'clockify', title: 'Open Clockify API keys', defaults: ['<Control>o']},
-    {id: 'clockify-disconnect', group: 'clockify', title: 'Disconnect Clockify', defaults: ['<Control>d']},
+    {id: 'clockify-keys', group: 'clockify', title: 'Open Clockify API keys (Getting Started)', defaults: ['<Control>o']},
+    {id: 'clockify-disconnect', group: 'clockify', title: 'Disconnect time tracking', defaults: ['<Control>d']},
 
     {id: 'copy-shown', group: 'calculator', title: 'Copy the answer as shown', defaults: ['<Shift><Control>c']},
     {id: 'copy-question', group: 'calculator', title: 'Copy question and answer', defaults: ['<Control><Alt>c']},
@@ -47,7 +47,7 @@ export type ShortcutGroup = typeof SHORTCUTS[number]['group'];
 export const GROUPS: Record<ShortcutGroup, string> = {
     launcher: 'Launcher',
     passwords: 'Passwords',
-    clockify: 'Clockify',
+    clockify: 'Time Tracking',
     calculator: 'Calculator',
     t3code: 'T3 Code',
 };

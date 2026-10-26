@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
-import {distinctTasks, duration, parseDraft, timeAgo} from '../src/clockify/tasks.ts';
+import {distinctTasks, duration, parseDraft, serverTasks, timeAgo} from '../src/timer/tasks.ts';
 
 const projects = [
     {id: 'p1', name: 'Falcon Website', clientName: 'Falcon', color: '#f00', billable: true},
@@ -35,6 +35,26 @@ test('distinctTasks de-duplicates and keeps the newest first', () => {
     assert.deepEqual(tasks[0].tagNames, ['Code Review']);
     assert.equal(tasks[1].running, false);
     assert.equal(tasks[1].projectName, 'Internal');
+});
+
+test('serverTasks puts the running entry first, once', () => {
+    const review = {description: 'Review', taskId: 'g1', task: {name: 'Login', project: 'Web › Phase 2'}, categoryId: 'c1', category: {name: 'Project work', color: '#1baf7a'}};
+    const tasks = serverTasks([
+        {...review, lastUsedAt: '2026-10-12T09:00:00Z'},
+        {description: 'Admin', projectId: 'p1', project: 'Internal', lastUsedAt: '2026-10-11T09:00:00Z'},
+    ], {...review, startedAt: '2026-10-12T10:00:00Z'});
+
+    assert.equal(tasks.length, 2);
+    assert.equal(tasks[0].running, true);
+    assert.equal(tasks[0].lastStart, '2026-10-12T10:00:00Z');
+    assert.equal(tasks[0].projectName, 'Web › Phase 2');
+    assert.equal(tasks[0].taskName, 'Login');
+    assert.deepEqual(tasks[0].tagIds, ['c1']);
+    assert.deepEqual(tasks[0].tagNames, ['Project work']);
+    assert.equal(tasks[0].color, '#1baf7a');
+    assert.equal(tasks[1].running, false);
+    assert.equal(tasks[1].projectName, 'Internal');
+    assert.equal(serverTasks([{description: 'Admin'}], null)[0].running, false);
 });
 
 test('timeAgo and duration', () => {

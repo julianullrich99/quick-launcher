@@ -20,7 +20,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         window.set_default_size(640, 760);
         window.add(generalPage(settings));
         window.add(this.#passwordsPage(settings));
-        window.add(clockifyPage(settings));
+        window.add(timeTrackingPage(settings));
         window.add(shortcutsPage(settings));
     }
 
@@ -120,7 +120,7 @@ function generalPage(settings: Gio.Settings): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({title: 'General', icon_name: 'system-search-symbolic'});
 
     const launcher = new Adw.PreferencesGroup({
-        description: 'One launcher for passwords, Clockify, the calculator, emoji and system commands. Start typing to search everything at once.',
+        description: 'One launcher for passwords, time tracking, the calculator, emoji and system commands. Start typing to search everything at once.',
     });
     launcher.add(shortcutRow(settings, 'open-shortcut', 'Open launcher'));
     page.add(launcher);
@@ -161,27 +161,58 @@ function generalPage(settings: Gio.Settings): Adw.PreferencesPage {
     return page;
 }
 
-function clockifyPage(settings: Gio.Settings): Adw.PreferencesPage {
-    const page = new Adw.PreferencesPage({title: 'Clockify', icon_name: 'alarm-symbolic'});
+function timeTrackingPage(settings: Gio.Settings): Adw.PreferencesPage {
+    const page = new Adw.PreferencesPage({title: 'Time Tracking', icon_name: 'alarm-symbolic'});
 
     const general = new Adw.PreferencesGroup({
         description: 'Start timers from your recent time entries, or a new one with @project and #tags',
     });
-    general.add(shortcutRow(settings, 'clockify-shortcut', 'Open Clockify directly'));
+    general.add(choiceRow(settings, 'time-tracker', 'Service', [
+        ['clockify', 'Clockify', 'clockify.me, with an API key'],
+        ['custom', 'Custom server', 'Your own server with a time tracking API and a token'],
+    ]));
+    general.add(shortcutRow(settings, 'clockify-shortcut', 'Open time tracking directly'));
     page.add(general);
 
-    const api = new Adw.PreferencesGroup({
-        title: 'API',
+    const clockify = new Adw.PreferencesGroup({
+        title: 'Clockify',
         description: 'Create a key under Clockify → Profile settings → API',
     });
     const key = new Adw.PasswordEntryRow({title: 'API key', show_apply_button: true});
     settings.bind('clockify-api-key', key, 'text', Gio.SettingsBindFlags.DEFAULT);
-    api.add(key);
+    clockify.add(key);
 
     const url = new Adw.EntryRow({title: 'API URL (regional: https://euc1.clockify.me/api/v1)', show_apply_button: true});
     settings.bind('clockify-api-url', url, 'text', Gio.SettingsBindFlags.DEFAULT);
-    api.add(url);
-    page.add(api);
+    clockify.add(url);
+    page.add(clockify);
+
+    const custom = new Adw.PreferencesGroup({
+        title: 'Custom Server',
+        description: 'A server of your own with the time tracking REST API described in the README',
+    });
+    for (const [setting, title] of [
+        ['custom-tracker-name', 'Name in the launcher (empty = Time Tracking)'],
+        ['custom-tracker-url', 'API URL, e.g. https://example.com/api/time'],
+    ] as const) {
+        const row = new Adw.EntryRow({title, show_apply_button: true});
+        settings.bind(setting, row, 'text', Gio.SettingsBindFlags.DEFAULT);
+        custom.add(row);
+    }
+    const token = new Adw.PasswordEntryRow({title: 'Token', show_apply_button: true});
+    settings.bind('custom-tracker-token', token, 'text', Gio.SettingsBindFlags.DEFAULT);
+    custom.add(token);
+    page.add(custom);
+
+    // Only the chosen service's settings.
+    const sync = () => {
+        const chosen = settings.get_string('time-tracker');
+        clockify.visible = chosen === 'clockify';
+        custom.visible = chosen === 'custom';
+    };
+    sync();
+    const id = settings.connect('changed::time-tracker', sync);
+    page.connect('destroy', () => settings.disconnect(id));
 
     return page;
 }
@@ -194,7 +225,7 @@ function shortcutsPage(settings: Gio.Settings): Adw.PreferencesPage {
         description: 'These work everywhere in GNOME. Click a shortcut to change it.',
     });
     global.add(shortcutRow(settings, 'open-shortcut', 'Open launcher'));
-    global.add(shortcutRow(settings, 'clockify-shortcut', 'Open Clockify directly'));
+    global.add(shortcutRow(settings, 'clockify-shortcut', 'Open time tracking directly'));
     page.add(global);
 
     const groups = new Map<ShortcutGroup, Adw.PreferencesGroup>();

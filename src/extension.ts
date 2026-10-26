@@ -6,8 +6,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
 import {ExchangeRates} from './calc/rates.ts';
-import {Clockify} from './clockify/clockify.ts';
-import {ClockifyIndicator} from './clockify/indicator.ts';
 import {Emoji} from './emoji/emoji.ts';
 import {shortcutText} from './lib/shortcuts.ts';
 import {Launcher} from './lib/launcher.ts';
@@ -17,15 +15,17 @@ import {Passwords} from './passwords/passwords.ts';
 import {Root} from './root.ts';
 import {System} from './system/system.ts';
 import {T3Code} from './t3code/t3code.ts';
+import {TimerIndicator} from './timer/indicator.ts';
+import {TimeTracking} from './timer/tracking.ts';
 
 export default class QuickLauncherExtension extends Extension {
     #timers: Timers | null = null;
     #launcher: Launcher | null = null;
     #rates: ExchangeRates | null = null;
     #passwords: Passwords | null = null;
-    #clockify: Clockify | null = null;
+    #tracking: TimeTracking | null = null;
     #t3code: T3Code | null = null;
-    #indicator: ClockifyIndicator | null = null;
+    #indicator: TimerIndicator | null = null;
     #shortcuts: string[] = [];
     #notification: MessageTray.Notification | null = null;
 
@@ -37,7 +37,7 @@ export default class QuickLauncherExtension extends Extension {
         this.#launcher = launcher;
         this.#rates = new ExchangeRates();
         this.#passwords = new Passwords(settings, this.#timers, this.dir, launcher, recents);
-        this.#clockify = new Clockify(settings, launcher, recents);
+        this.#tracking = new TimeTracking(settings, launcher, recents);
         this.#t3code = new T3Code(settings, launcher, recents);
         const root = new Root({
             settings,
@@ -45,7 +45,7 @@ export default class QuickLauncherExtension extends Extension {
             recents,
             rates: this.#rates,
             passwords: this.#passwords,
-            clockify: this.#clockify,
+            tracking: this.#tracking,
             emoji: new Emoji(this.dir.get_child('emoji').get_child('emoji.json'), launcher, recents),
             system: new System(launcher),
             t3code: this.#t3code,
@@ -59,16 +59,16 @@ export default class QuickLauncherExtension extends Extension {
                 root.open();
         });
         this.#bind('clockify-shortcut', settings, () => {
-            this.#clockify?.load();
+            this.#tracking?.load();
             if (launcher.isOpen)
                 launcher.close();
             else
-                launcher.open(this.#clockify!.view);
+                launcher.open(this.#tracking!.view);
         });
 
-        this.#indicator = new ClockifyIndicator(this.#clockify, () => {
-            this.#clockify?.load();
-            launcher.open(this.#clockify!.view);
+        this.#indicator = new TimerIndicator(this.#tracking, () => {
+            this.#tracking?.load();
+            launcher.open(this.#tracking!.view);
         });
 
         if (root.onboarding.pending)
@@ -81,7 +81,7 @@ export default class QuickLauncherExtension extends Extension {
         const notification = new MessageTray.Notification({
             source,
             title: 'Quick Launcher is ready',
-            body: `Press ${shortcut} to connect your password managers and Clockify, and see what it can do.`,
+            body: `Press ${shortcut} to connect your password managers and time tracking, and see what it can do.`,
             iconName: 'system-search-symbolic',
         });
         notification.connect('activated', open);
@@ -108,13 +108,13 @@ export default class QuickLauncherExtension extends Extension {
         this.#indicator = null;
         this.#launcher?.destroy();
         this.#passwords?.destroy();
-        this.#clockify?.destroy();
+        this.#tracking?.destroy();
         this.#t3code?.destroy();
         this.#rates?.destroy();
         this.#timers?.clear();
         this.#launcher = null;
         this.#passwords = null;
-        this.#clockify = null;
+        this.#tracking = null;
         this.#t3code = null;
         this.#rates = null;
         this.#timers = null;

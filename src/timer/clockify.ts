@@ -1,39 +1,29 @@
-import Gio from 'gi://Gio';
+import type Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Soup from 'gi://Soup?version=3.0';
 
-import type {Project, Tag, TimeEntry} from './tasks.ts';
-
-Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
-
-export class ClockifyError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'ClockifyError';
-    }
-}
+import type {Backend} from './backend.ts';
+import {Http} from './http.ts';
+import {distinctTasks, type Project, type Tag, type Task, type TimeEntry} from './tasks.ts';
 
 interface Me {
     id: string;
     workspace: string;
 }
 
-export interface NewEntry {
-    description: string;
-    projectId?: string;
-    taskId?: string;
-    tagIds: string[];
-    billable: boolean;
-}
-
 function now(): string {
     return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 }
 
-export class ClockifyApi {
+export class ClockifyApi implements Backend {
+    readonly id = 'clockify';
+    readonly name = 'Clockify';
+    readonly color = '#03a9f4';
+    readonly keysUrl = 'https://app.clockify.me/manage-api-keys';
+    readonly keyHint = 'Create one in Clockify under Preferences → Advanced → API keys';
+    readonly keyName = 'API key';
+    readonly missing = null;
     readonly #settings: Gio.Settings;
-    readonly #session = new Soup.Session({timeout: 20});
-    readonly #cancellable = new Gio.Cancellable();
+    readonly #http = new Http();
     #me: Promise<Me> | null = null;
     #meFor = '';
 
@@ -49,7 +39,6 @@ export class ClockifyApi {
         return `${this.#settings.get_string('clockify-api-url')}|${this.#settings.get_string('clockify-api-key')}`;
     }
 
-    /** Identifies the account, so a cache never shows another account's data. */
     get account(): string {
         return GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this.#credentials, -1) ?? '';
     }
@@ -63,34 +52,24 @@ export class ClockifyApi {
         const base = this.#settings.get_string('clockify-api-url').replace(/\/+$/, '');
         const params = Object.entries(query)
             .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-        const message = Soup.Message.new(method, `${base}${path}${params ? `?${params}` : ''}`);
-        if (!message)
-            throw new ClockifyError(`Invalid API URL: ${base}`);
-
-        message.request_headers.append('X-Api-Key', key ?? this.#settings.get_string('clockify-api-key'));
-        if (body !== undefined) {
-            message.set_request_body_from_bytes('application/json',
-                new GLib.Bytes(new TextEncoder().encode(JSON.stringify(body))));
-        }
-
-        const bytes = await this.#session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, this.#cancellable);
-        const text = new TextDecoder().decode(bytes.toArray());
-        const status = message.get_status();
-        if (status < 200 || status >= 300) {
-            // Clockify answers with JSON {message}; proxies and wrong URLs with HTML.
-            let detail = message.get_reason_phrase() ?? '';
-            try {
-                detail = JSON.parse(text).message || detail;
-            } catch {}
-            throw new ClockifyError(`${status} ${detail}`.trim());
-        }
-        return (text ? JSON.parse(text) : null) as T;
+        const {data} = await this.#http.request<T>(method, `${base}${path}${params ? `?${params}` : ''}`, {
+            headers: {'X-Api-Key': key ?? this.#settings.get_string('clockify-api-key')},
+            body,
+        });
+        return data as T;
     }
 
-    /** Checks an API key before it is saved; resolves the account's name. */
     async verify(key: string): Promise<string> {
         const user = await this.#request<{name?: string; email?: string}>('GET', '/user', {key});
         return user.name || user.email || 'Clockify';
+    }
+
+    saveKey(key: string) {
+        this.#settings.set_string('clockify-api-key', key);
+    }
+
+    resetKey() {
+        this.#settings.reset('clockify-api-key');
     }
 
     #user(): Promise<Me> {
@@ -112,21 +91,20 @@ export class ClockifyApi {
         return `/workspaces/${workspace}/user/${id}/time-entries`;
     }
 
-    async recent(): Promise<TimeEntry[]> {
-        return this.#request('GET', await this.#entriesPath(), {query: {'hydrated': true, 'page-size': 200}});
-    }
-
-    async projects(): Promise<Project[]> {
+    async fetch(): Promise<{tasks: Task[]; projects: Project[]; tags: Tag[]}> {
         const {workspace} = await this.#user();
-        return this.#request('GET', `/workspaces/${workspace}/projects`, {query: {'archived': false, 'page-size': 500}});
+        const [entries, allProjects, allTags] = await Promise.all([
+            this.#request<TimeEntry[]>('GET', await this.#entriesPath(), {query: {'hydrated': true, 'page-size': 200}}),
+            this.#request<Project[]>('GET', `/workspaces/${workspace}/projects`, {query: {'archived': false, 'page-size': 500}}),
+            this.#request<Tag[]>('GET', `/workspaces/${workspace}/tags`, {query: {'archived': false, 'page-size': 500}}),
+        ]);
+        // Only what parseDraft() and distinctTasks() need, to keep the cache small.
+        const projects = allProjects.map(({id, name, billable, clientName, color}) =>
+            ({id, name, billable, clientName, color}));
+        const tags = allTags.map(({id, name}) => ({id, name}));
+        return {tasks: distinctTasks(entries, projects, tags), projects, tags};
     }
 
-    async tags(): Promise<Tag[]> {
-        const {workspace} = await this.#user();
-        return this.#request('GET', `/workspaces/${workspace}/tags`, {query: {'archived': false, 'page-size': 500}});
-    }
-
-    /** Stops the running timer at `end`. Resolves false if none was running. */
     async stop(end = now()): Promise<boolean> {
         const path = await this.#entriesPath();
         const running = await this.#request<TimeEntry[]>('GET', path, {query: {'in-progress': true}});
@@ -136,8 +114,8 @@ export class ClockifyApi {
         return true;
     }
 
-    /** Starts a timer, stopping the running one at the same instant so there's no gap. */
-    async start({description, projectId, taskId, tagIds, billable}: NewEntry) {
+    /** Stops the running timer at the same instant, so there's no gap. */
+    async start({description, projectId, taskId, tagIds, billable}: Task) {
         const {workspace} = await this.#user();
         const start = now();
         await this.stop(start);
@@ -147,7 +125,6 @@ export class ClockifyApi {
     }
 
     destroy() {
-        this.#cancellable.cancel();
-        this.#session.abort();
+        this.#http.destroy();
     }
 }

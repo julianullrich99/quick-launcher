@@ -112,10 +112,18 @@
       <summary>T3 Code data directory; empty for ~/.t3/userdata</summary>
     </key>
 
-    <!-- Clockify -->
+    <!-- Time tracking -->
+    <key name="time-tracker" type="s">
+      <choices>
+        <choice value="clockify"/>
+        <choice value="custom"/>
+      </choices>
+      <default>'clockify'</default>
+      <summary>Where timers run: Clockify or a custom server</summary>
+    </key>
     <key name="clockify-shortcut" type="as">
       <default><![CDATA[[]]]></default>
-      <summary>Shortcut that opens the launcher straight in Clockify (optional)</summary>
+      <summary>Shortcut that opens the launcher straight in time tracking (optional)</summary>
     </key>
     <key name="clockify-api-key" type="s">
       <default>''</default>
@@ -124,6 +132,18 @@
     <key name="clockify-api-url" type="s">
       <default>'https://api.clockify.me/api/v1'</default>
       <summary>Clockify API base URL (regional servers use e.g. https://euc1.clockify.me/api/v1)</summary>
+    </key>
+    <key name="custom-tracker-name" type="s">
+      <default>''</default>
+      <summary>Name of the custom time tracking server in the launcher; empty for "Time Tracking"</summary>
+    </key>
+    <key name="custom-tracker-url" type="s">
+      <default>''</default>
+      <summary>Base URL of the custom server's time tracking API, e.g. https://example.com/api/time</summary>
+    </key>
+    <key name="custom-tracker-token" type="s">
+      <default>''</default>
+      <summary>Bearer token for the custom time tracking server</summary>
     </key>
   </schema>
 </schemalist>

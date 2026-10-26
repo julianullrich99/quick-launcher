@@ -23,13 +23,14 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Generate passwords and PINs; type a number to set the length
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
-- Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
+- Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`;
+  a custom time tracking server works too
 - Calculator with units, currencies, percentages, dates, calendar weeks and time zones
 - Emoji search in English and German
 - System commands: lock, suspend, log out, restart, power off, screenshot, dark mode, Do Not
   Disturb, Night Light
 - Follows the shell theme (light, dark, accent color), with a blurred, translucent background
-- Shows the running Clockify timer and how long it runs in the top bar
+- Shows the running timer and how long it runs in the top bar
 - *Getting Started* on the first open connects your accounts and shows what it can do
 
 Quick Launcher supports GNOME Shell 48, 49 and 50.
@@ -84,7 +85,8 @@ open the launcher, it starts with *Getting Started*:
   <kbd>Ctrl</kbd><kbd>S</kbd> switches to another server later.
 - **Connect 1Password** unlocks it through the 1Password app or your master password.
 - **Connect Clockify** takes an API key and checks it before saving it. <kbd>Ctrl</kbd><kbd>O</kbd>
-  opens the page where you create one.
+  opens the page where you create one. *Use a Custom Server Instead* switches to
+  [your own server](#custom-time-tracking-server), which asks for its URL and a token.
 - T3 Code shows up as found if it is installed.
 - **Try it** has examples for the calculator, dates, time zones, emoji and system commands. Press
   <kbd>Enter</kbd> on one to see it run.
@@ -221,22 +223,43 @@ The sessions are read from T3 Code's state database (`~/.t3/userdata/statev2.sql
 and through the `sqlite3` command, which has to be installed. Nothing is written and no T3 Code
 API is called.
 
-### Clockify
+### Time tracking
 
-Matching recent entries show up in the search, with when you last worked on them.
+Timers run in Clockify, or on a [custom server](#custom-time-tracking-server). Matching recent entries show up in the search, with when you last worked on them.
 <kbd>Enter</kbd> starts an entry again, or stops it if it is running; *Stop Timer* is also a
 command while a timer runs, with how long it runs. Starting a timer stops the running one at the same second, so there are no gaps.
 
-While a timer runs, the top bar shows it and how long it runs, also for timers started in Clockify
-itself; its menu stops the timer. Until Clockify is connected, *Connect Clockify* is a command.
+While a timer runs, the top bar shows it and how long it runs, also for timers started elsewhere;
+its menu stops the timer. Until time tracking is connected, *Connect Clockify* is a command.
 
 <p align="center">
   <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">
 </p>
 
 *Start Timer “…”* starts a new entry from whatever you typed. `@proj` picks the first matching
-project and `#tag` adds tags, for example `Standup @falcon #meeting`. The *Start Timer* command
-lists all recent entries.
+project and `#tag` adds tags, for example `Standup @falcon #meeting`. On a custom server `#` picks
+its category. The *Start Timer* command lists all recent entries.
+
+#### Custom time tracking server
+
+Choose *Custom server* under *Time Tracking* in the settings and enter the base URL of its API and
+a token. A name for it is optional; the launcher shows it instead of *Time Tracking*. The server
+needs these routes under the base URL, with `Authorization: Bearer <token>` and JSON:
+
+| Route | Answers |
+| --- | --- |
+| `GET /me` | `{name, email}`, to check the token |
+| `GET /timer` | the running entry or `null`, with an `ETag`; `If-None-Match` answers `304` while it is unchanged |
+| `POST /timer` | starts `{description, projectId, taskId, categoryId}` and stops a running entry at the same moment |
+| `DELETE /timer` | stops the running entry, `404` when none runs |
+| `GET /entries/recent?limit=100` | each recent combination once, newest first, with `lastUsedAt` |
+| `GET /projects` | `[{id, name, client}]` |
+| `GET /categories` | `[{id, name, archivedAt}]` |
+
+An entry is `{description, projectId, project, taskId, task: {name, project}, categoryId,
+category: {name, color}, startedAt}`, where `project` is a name; `task.project` names where the
+task belongs. Errors are `{message}` with the status code. The top bar asks `GET /timer` every 30
+seconds and only fetches everything else when it changed.
 
 ### Emoji
 
@@ -261,7 +284,8 @@ that use the same keys are marked, and the arrow next to a shortcut resets it.
 Beyond shortcuts, you can turn each
 password manager on or off, set the rbw and op binaries, the Bitwarden account email and server, the 1Password account and unlock
 method, the default currency, whether to search T3 Code sessions (and T3 Code's data directory),
-how long copied secrets stay on the clipboard, and the Clockify API key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently
+how long copied secrets stay on the clipboard, and the time tracking service: the Clockify API key,
+or a custom server's URL and token. An optional second shortcut opens time tracking directly, and *Clear* empties the list of recently
 used items. Workspaces on a regional Clockify server
 need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
@@ -278,7 +302,7 @@ need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
   pinentry.
 - T3 Code sessions are read with `sqlite3 -readonly`, every two seconds while the launcher is
   open. Sessions are opened through `t3code://threads/<environment>/<thread>` links.
-- Clockify entries and exchange rates are cached in `~/.cache/quick-launcher/`, so they show up
+- Recent time entries and exchange rates are cached in `~/.cache/quick-launcher/`, so they show up
   right away after a restart.
 
 For development notes, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

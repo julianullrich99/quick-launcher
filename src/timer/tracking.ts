@@ -7,13 +7,16 @@ import type {Action, Item, Launcher, Section, View} from '../lib/launcher.ts';
 import {notifyError, osd} from '../lib/output.ts';
 import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
-import {ClockifyApi} from './api.ts';
-import {distinctTasks, duration, parseDraft, timeAgo, type Project, type Tag, type Task} from './tasks.ts';
+import type {Backend} from './backend.ts';
+import {ClockifyApi} from './clockify.ts';
+import {ServerApi} from './server.ts';
+import {duration, parseDraft, timeAgo, type Project, type Tag, type Task} from './tasks.ts';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_async');
 
-export const CLOCKIFY_COLOR = '#03a9f4';
 const RECENT_PREFIX = 'clockify:';
+/** How often everything is fetched again to notice timers started elsewhere, for services that can't say cheaply */
+const POLL_US = 120 * GLib.USEC_PER_SEC;
 
 interface CacheData {
     account: string;
@@ -37,8 +40,12 @@ function searchFields(task: Task): Field[] {
  * something to show right away, even after a restart.
  */
 class Cache {
-    readonly #file = Gio.File.new_for_path(
-        GLib.build_filenamev([GLib.get_user_cache_dir(), 'quick-launcher', 'clockify.json']));
+    readonly #file: Gio.File;
+
+    constructor(name: string) {
+        this.#file = Gio.File.new_for_path(
+            GLib.build_filenamev([GLib.get_user_cache_dir(), 'quick-launcher', `${name}.json`]));
+    }
 
     load(account: string): CacheData | null {
         try {
@@ -62,18 +69,25 @@ class Cache {
     }
 }
 
-/** Starts Clockify timers from recent entries or a new description. */
-export class Clockify {
+function createBackend(settings: Gio.Settings): Backend {
+    return settings.get_string('time-tracker') === 'custom' ? new ServerApi(settings) : new ClockifyApi(settings);
+}
+
+/** Starts timers from recent entries or a new description, in Clockify or on a custom server. */
+export class TimeTracking {
     readonly #settings: Gio.Settings;
     readonly #launcher: Launcher;
     readonly #recents: Recents;
-    readonly #api: ClockifyApi;
-    readonly #cache = new Cache();
+    readonly #settingsId: number;
+    #backend: Backend;
+    #cache: Cache;
     #index = new SearchIndex<Task>([], searchFields);
     #projects: Project[] = [];
     #tags: Tag[] = [];
     #account: string | null = null;
     #loading = false;
+    /** When everything was last requested (monotonic µs) */
+    #fetchedAt = 0;
     #destroyed = false;
     #error: string | null = null;
     readonly #listeners = new Set<() => void>();
@@ -84,29 +98,52 @@ export class Clockify {
         this.#settings = settings;
         this.#launcher = launcher;
         this.#recents = recents;
-        this.#api = new ClockifyApi(settings);
+        this.#backend = createBackend(settings);
+        this.#cache = new Cache(this.#backend.id);
+        // Getters, as they follow the service in use.
+        const name = () => this.name;
+        const tag = () => this.#backend.id === 'custom' ? 'category' : 'tag';
         this.view = {
-            title: 'Clockify',
+            get title() {
+                return name();
+            },
             icon: 'alarm-symbolic',
-            placeholder: 'Start time entry…  @project #tag',
+            get placeholder() {
+                return `Start time entry…  @project #${tag()}`;
+            },
             search: query => this.#viewSections(query),
             actions: () => this.#viewActions(),
             onOpen: () => {
-                if (!this.#api.configured)
-                    this.#launcher.setStatus('Set your Clockify API key in the preferences');
+                if (!this.configured)
+                    this.#launcher.setStatus(`Set up ${this.name} in the preferences`);
                 else if (!this.#index.items.length)
-                    this.#launcher.setStatus('Loading Clockify…');
+                    this.#launcher.setStatus(`Loading ${this.name}…`);
             },
         };
+        this.#settingsId = settings.connect('changed::time-tracker', () => this.#switchBackend());
     }
 
     destroy() {
         this.#destroyed = true;
-        this.#api.destroy();
+        this.#settings.disconnect(this.#settingsId);
+        this.#backend.destroy();
+    }
+
+    /** The service in use, for setting it up */
+    get service(): Backend {
+        return this.#backend;
+    }
+
+    get name(): string {
+        return this.#backend.name;
+    }
+
+    get color(): string {
+        return this.#backend.color;
     }
 
     get configured(): boolean {
-        return this.#api.configured;
+        return this.#backend.configured;
     }
 
     /** Why the last refresh failed, if it did */
@@ -114,10 +151,10 @@ export class Clockify {
         return this.#error;
     }
 
-    /** Saves an API key once Clockify accepts it; resolves the account's name. */
+    /** Saves a key once the service accepts it; resolves the account's name. */
     async connect(key: string): Promise<string> {
-        const name = await this.#api.verify(key);
-        this.#settings.set_string('clockify-api-key', key);
+        const name = await this.#backend.verify(key);
+        this.#backend.saveKey(key);
         this.#error = null;
         this.load(true);
         return name;
@@ -135,8 +172,24 @@ export class Clockify {
     }
 
     disconnect() {
-        this.#settings.reset('clockify-api-key');
+        this.#backend.resetKey();
+        this.#clear();
+    }
+
+    #switchBackend() {
+        this.#backend.destroy();
+        this.#backend = createBackend(this.#settings);
+        this.#cache = new Cache(this.#backend.id);
+        // A request of the old one may still run; it is dropped when it ends.
+        this.#loading = false;
+        this.#clear();
+        this.load();
+    }
+
+    #clear() {
         this.#index = new SearchIndex<Task>([], searchFields);
+        this.#projects = [];
+        this.#tags = [];
         this.#account = null;
         this.#error = null;
         this.#launcher.refresh();
@@ -159,17 +212,17 @@ export class Clockify {
         return [
             {
                 id: 'command:clockify',
-                icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR},
+                icon: {name: 'alarm-symbolic', color: this.color},
                 title: 'Start Timer',
-                subtitle: 'Clockify',
+                subtitle: this.name,
                 accessory: 'Command',
                 actions: [{title: 'Open', icon: 'go-next-symbolic', run: () => this.#launcher.push(this.view)}],
             },
             ...running ? [{
                 id: 'command:clockify-stop',
-                icon: {name: 'media-playback-stop-symbolic', color: CLOCKIFY_COLOR},
+                icon: {name: 'media-playback-stop-symbolic', color: this.color},
                 title: 'Stop Timer',
-                subtitle: running.description || running.projectName || 'Clockify',
+                subtitle: running.description || running.taskName || running.projectName || this.name,
                 accessory: `● ${duration(running.lastStart)}`,
                 accessoryActive: true,
                 actions: [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.stop()}],
@@ -187,7 +240,7 @@ export class Clockify {
         return {
             ...this.#item(draft),
             id: 'clockify:fallback',
-            icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR},
+            icon: {name: 'alarm-symbolic', color: this.color},
             title: `Start Timer “${draft.description || draft.projectName}”`,
         };
     }
@@ -239,7 +292,7 @@ export class Clockify {
                 name: task.running ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
                 style: task.color ? `color: ${task.color};` : undefined,
             },
-            title: task.description || '(no description)',
+            title: task.description || task.taskName || '(no description)',
             subtitle: [project, task.clientName, tags].filter(Boolean).join('  ·  '),
             accessory: task.running ? `● ${duration(task.lastStart)}` : timeAgo(task.lastStart),
             actions: task.running
@@ -276,8 +329,27 @@ export class Clockify {
             void this.#reload();
     }
 
+    /**
+     * Notices timers started or stopped elsewhere: asks the service whether the
+     * running timer changed if it can tell cheaply, else refetches now and then.
+     */
+    poll() {
+        if (!this.configured || this.#loading)
+            return;
+        const backend = this.#backend;
+        if (backend.runningChanged) {
+            // A failure shows up with the next full refresh; polling stays quiet.
+            backend.runningChanged().then(changed => {
+                if (changed && backend === this.#backend && !this.#destroyed)
+                    void this.#reload();
+            }).catch(() => {});
+        } else if (GLib.get_monotonic_time() - this.#fetchedAt > POLL_US) {
+            void this.#reload();
+        }
+    }
+
     #loadCache() {
-        const account = this.#api.account;
+        const account = this.#backend.account;
         if (this.#account === account)
             return;
         this.#account = account;
@@ -294,20 +366,15 @@ export class Clockify {
     }
 
     async #reload() {
+        const backend = this.#backend;
+        const cache = this.#cache;
         this.#loading = true;
+        this.#fetchedAt = GLib.get_monotonic_time();
         try {
-            const account = this.#api.account;
-            const [entries, allProjects, allTags] = await Promise.all([
-                this.#api.recent(), this.#api.projects(), this.#api.tags(),
-            ]);
-            if (this.#destroyed)
+            const account = backend.account;
+            const {tasks, projects, tags} = await backend.fetch();
+            if (this.#destroyed || backend !== this.#backend)
                 return;
-
-            // Only what parseDraft() and distinctTasks() need, to keep the cache small.
-            const projects = allProjects.map(({id, name, billable, clientName, color}) =>
-                ({id, name, billable, clientName, color}));
-            const tags = allTags.map(({id, name}) => ({id, name}));
-            const tasks = distinctTasks(entries, projects, tags);
 
             this.#account = account;
             this.#error = null;
@@ -315,48 +382,49 @@ export class Clockify {
             if (this.#launcher.view === this.view)
                 this.#launcher.setStatus(null);
 
-            this.#cache.save({account, tasks, projects, tags}).catch(e =>
-                console.error('quick-launcher: Could not write Clockify cache', e));
+            cache.save({account, tasks, projects, tags}).catch(e =>
+                console.error('quick-launcher: Could not write time tracking cache', e));
         } catch (e) {
-            if (this.#destroyed)
+            if (this.#destroyed || backend !== this.#backend)
                 return;
-            console.error('quick-launcher: Clockify request failed', e);
+            console.error(`quick-launcher: ${backend.name} request failed`, e);
             this.#error = (e as Error).message;
             this.#launcher.refresh();
             if (this.#launcher.view === this.view)
-                this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
+                this.#launcher.setStatus(`${backend.name}: ${(e as Error).message}`);
         } finally {
-            this.#loading = false;
+            if (backend === this.#backend)
+                this.#loading = false;
         }
     }
 
     // --- Actions ---
 
     async #start(task: Task) {
-        if (!task.description && !task.projectId)
+        if (!task.description && !task.projectId && !task.taskId)
             return;
         if (!task.isNew)
             this.#recents.add(`${RECENT_PREFIX}${task.id}`);
         this.#launcher.close();
         try {
-            await this.#api.start(task);
-            osd('media-playback-start-symbolic', task.description || task.projectName || 'Timer started');
+            await this.#backend.start(task);
+            osd('media-playback-start-symbolic', task.description || task.taskName || task.projectName || 'Timer started');
             void this.#reload();
         } catch (e) {
-            notifyError('Could not start Clockify timer', e);
+            notifyError(`Could not start the ${this.name} timer`, e);
         }
     }
 
     async stop() {
         this.#launcher.close();
         try {
-            if (await this.#api.stop())
+            if (await this.#backend.stop())
                 osd('media-playback-stop-symbolic', 'Timer stopped');
             else
-                Main.notify('Clockify', 'No timer running');
+                Main.notify(this.name, 'No timer running');
             void this.#reload();
         } catch (e) {
-            notifyError('Could not stop Clockify timer', e);
+            notifyError(`Could not stop the ${this.name} timer`, e);
         }
     }
 }

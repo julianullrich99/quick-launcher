@@ -1,4 +1,4 @@
-// Pure helpers for the Clockify launcher; no GNOME imports, so they're unit tested.
+// Pure helpers for time tracking; no GNOME imports, so they're unit tested.
 import {normalize} from '../lib/search.ts';
 
 export interface Project {
@@ -81,6 +81,50 @@ export function distinctTasks(entries: TimeEntry[], projects: Project[], tags: T
         });
     }
     return [...seen.values()];
+}
+
+/** An entry of a custom time tracking server, from GET /timer or GET /entries/recent (subset). */
+export interface ServerEntry {
+    description?: string | null;
+    projectId?: string | null;
+    project?: string | null;
+    taskId?: string | null;
+    task?: {name?: string; project?: string} | null;
+    categoryId?: string | null;
+    category?: {name?: string; color?: string} | null;
+    /** When the running entry started */
+    startedAt?: string;
+    /** When a recent combination was last started */
+    lastUsedAt?: string;
+}
+
+/**
+ * The server's recent combinations as tasks, with the running entry first.
+ * Its category is the one tag a task can have.
+ */
+export function serverTasks(recent: ServerEntry[], running: ServerEntry | null): Task[] {
+    const toTask = (e: ServerEntry, lastStart: string | undefined, isRunning: boolean): Task => ({
+        id: JSON.stringify([e.description ?? '', e.taskId ?? null, e.projectId ?? null, e.categoryId ?? null]),
+        description: e.description ?? '',
+        projectId: e.projectId ?? undefined,
+        taskId: e.taskId ?? undefined,
+        tagIds: e.categoryId ? [e.categoryId] : [],
+        billable: false,
+        projectName: e.project || e.task?.project || '',
+        clientName: '',
+        color: e.category?.color ?? null,
+        taskName: e.task?.name ?? '',
+        tagNames: e.category?.name ? [e.category.name] : [],
+        lastStart,
+        running: isRunning,
+    });
+
+    const tasks = recent.map(e => toTask(e, e.lastUsedAt, false));
+    if (running) {
+        const task = toTask(running, running.startedAt, true);
+        return [task, ...tasks.filter(t => t.id !== task.id)];
+    }
+    return tasks;
 }
 
 function findByName<T extends {name: string}>(items: T[], token: string): T | null {

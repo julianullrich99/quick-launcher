@@ -1,22 +1,20 @@
 import Gio from 'gi://Gio';
 
-import type {Clockify} from './clockify/clockify.ts';
-import {CLOCKIFY_COLOR} from './clockify/clockify.ts';
 import {shortcutText, type ShortcutId} from './lib/shortcuts.ts';
 import type {Action, Item, Launcher, Section, View} from './lib/launcher.ts';
 import {notifyError, osd} from './lib/output.ts';
 import type {Passwords, VaultInfo} from './passwords/passwords.ts';
 import {PASSWORDS_COLOR} from './passwords/passwords.ts';
 import type {T3Code} from './t3code/t3code.ts';
+import type {TimeTracking} from './timer/tracking.ts';
 
-const CLOCKIFY_KEYS_URL = 'https://app.clockify.me/manage-api-keys';
 const ACCENT = '#3584e4';
 
 export interface OnboardingProviders {
     settings: Gio.Settings;
     launcher: Launcher;
     passwords: Passwords;
-    clockify: Clockify;
+    tracking: TimeTracking;
     t3code: T3Code;
     /** The start view, which searches while typing here and opens when done */
     root: View;
@@ -24,7 +22,7 @@ export interface OnboardingProviders {
 
 /**
  * Getting started, shown on the first open: connect password managers and
- * Clockify, then try the calculator, emoji and commands with examples.
+ * time tracking, then try the calculator, emoji and commands with examples.
  */
 export class Onboarding {
     readonly #p: OnboardingProviders;
@@ -51,7 +49,7 @@ export class Onboarding {
             id: 'command:onboarding',
             icon: {name: 'starred-symbolic', color: ACCENT},
             title: 'Getting Started',
-            subtitle: 'Connect password managers and Clockify, see what Quick Launcher can do',
+            subtitle: 'Connect password managers and time tracking, see what Quick Launcher can do',
             accessory: 'Command',
             keywords: 'welcome onboarding setup connect einrichten willkommen',
             actions: [{title: 'Open', icon: 'go-next-symbolic', run: () => this.#p.launcher.push(this.view)}],
@@ -63,7 +61,7 @@ export class Onboarding {
         return [
             {title: 'Connect', items: [
                 ...passwords.vaults().map(info => this.#vaultRow(info)),
-                this.#clockifyRow(),
+                this.#trackingRow(),
                 ...t3code.available ? [this.#t3Row()] : [],
             ]},
             {title: 'Try it', items: this.#examples()},
@@ -132,65 +130,83 @@ export class Onboarding {
         };
     }
 
-    /** "Connect Clockify" for the start view's commands, until it is connected. */
-    clockifyCommand(): Item | null {
-        const {clockify} = this.#p;
-        if (clockify.configured && !clockify.error)
+    /** "Connect Clockify" (or the custom server) for the start view's commands, until it is connected. */
+    trackingCommand(): Item | null {
+        const {tracking} = this.#p;
+        if (tracking.configured && !tracking.error)
             return null;
         return {
-            ...this.#clockifyRow(),
+            ...this.#trackingRow(),
             id: 'command:clockify-connect',
-            accessory: clockify.error ? 'Failed' : 'Set Up',
-            keywords: 'clockify timer time tracking zeiterfassung api key anmelden verbinden',
+            accessory: tracking.error ? 'Failed' : 'Set Up',
+            keywords: `${tracking.name} clockify timer time tracking zeiterfassung api key token anmelden verbinden`,
         };
     }
 
-    #clockifyRow(): Item {
-        const {clockify, launcher} = this.#p;
-        const base = {id: 'onboarding:clockify', icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR}};
-        const openKeys: Action = {
-            title: 'Open Clockify API Keys', icon: 'web-browser-symbolic', shortcut: 'clockify-keys',
-            run: () => this.#openUri(CLOCKIFY_KEYS_URL),
+    #trackingRow(): Item {
+        const {tracking, launcher, settings} = this.#p;
+        const {name, service} = tracking;
+        const base = {id: 'onboarding:clockify', icon: {name: 'alarm-symbolic', color: tracking.color}};
+        const custom = settings.get_string('time-tracker') === 'custom';
+        const other: Action = {
+            title: custom ? 'Use Clockify Instead' : 'Use a Custom Server Instead', icon: 'network-server-symbolic',
+            run: () => settings.set_string('time-tracker', custom ? 'clockify' : 'custom'),
         };
+        const openKeys: Action[] = service.keysUrl ? [{
+            title: `Open ${name} API Keys`, icon: 'web-browser-symbolic', shortcut: 'clockify-keys',
+            run: () => this.#openUri(service.keysUrl!),
+        }] : [];
 
-        if (clockify.configured && !clockify.error) {
+        if (tracking.configured && !tracking.error) {
             return {
                 ...base,
-                title: 'Clockify',
+                title: name,
                 subtitle: 'Type what you work on and press Enter to start a timer',
                 accessory: '✓ Connected',
                 accessoryActive: true,
                 actions: [
-                    {title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => launcher.push(clockify.view)},
-                    {title: 'Disconnect', icon: 'process-stop-symbolic', destructive: true, shortcut: 'clockify-disconnect', run: () => clockify.disconnect()},
+                    {title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => launcher.push(tracking.view)},
+                    {title: 'Disconnect', icon: 'process-stop-symbolic', destructive: true, shortcut: 'clockify-disconnect', run: () => tracking.disconnect()},
                 ],
             };
         }
         return {
             ...base,
-            title: 'Connect Clockify',
-            subtitle: clockify.error ?? 'Start timers from your recent entries · needs an API key',
-            accessory: clockify.error ? 'Failed' : undefined,
-            actions: [{title: 'Enter API Key', icon: 'dialog-password-symbolic', run: () => void this.#connectClockify()}, openKeys],
+            title: `Connect ${name}`,
+            subtitle: tracking.error ?? `Start timers from your recent entries · needs ${custom ? 'a server and a token' : 'an API key'}`,
+            accessory: tracking.error ? 'Failed' : undefined,
+            actions: [
+                {title: `Enter ${capitalize(service.keyName)}`, icon: 'dialog-password-symbolic', run: () => void this.#connectTracking()},
+                ...openKeys,
+                other,
+            ],
         };
     }
 
-    async #connectClockify() {
-        const {launcher, clockify} = this.#p;
+    async #connectTracking() {
+        const {launcher, tracking, settings} = this.#p;
+        const {missing} = tracking.service;
+        if (missing) {
+            const value = (await launcher.ask({...missing, secret: false, action: 'Next'}))?.trim();
+            if (!value)
+                return;
+            settings.set_string(missing.setting, value);
+        }
+        const {name, service} = tracking;
         const key = (await launcher.ask({
-            prompt: 'Clockify API key',
-            description: 'Create one in Clockify under Preferences → Advanced → API keys',
+            prompt: `${name} ${service.keyName}`,
+            description: service.keyHint,
             action: 'Connect',
         }))?.trim();
         if (!key)
             return;
-        launcher.setStatus('Checking the API key…');
+        launcher.setStatus(`Checking the ${service.keyName}…`);
         try {
-            const name = await clockify.connect(key);
+            const account = await tracking.connect(key);
             launcher.setStatus(null);
-            osd('alarm-symbolic', `Clockify connected as ${name}`);
+            osd('alarm-symbolic', `${name} connected as ${account}`);
         } catch (e) {
-            launcher.setStatus(`Clockify: ${(e as Error).message}`);
+            launcher.setStatus(`${name}: ${(e as Error).message}`);
         }
     }
 
@@ -209,7 +225,7 @@ export class Onboarding {
     }
 
     #examples(): Item[] {
-        const {launcher, root, passwords, clockify} = this.#p;
+        const {launcher, root, passwords, tracking} = this.#p;
         const example = (id: string, icon: string, color: string, title: string, subtitle: string, query: string): Item => ({
             id: `onboarding:example-${id}`,
             icon: {name: icon, color},
@@ -240,8 +256,8 @@ export class Onboarding {
                 actions: [
                     {title: 'Show Actions', icon: 'view-more-symbolic', run: () => launcher.showActions()},
                     {title: 'Search Passwords', icon: 'dialog-password-symbolic', shortcut: 'search-passwords', run: () => launcher.push(passwords.view)},
-                    ...clockify.configured
-                        ? [{title: 'Start Timer', icon: 'alarm-symbolic', shortcut: 'start-timer', run: () => launcher.push(clockify.view)} satisfies Action]
+                    ...tracking.configured
+                        ? [{title: 'Start Timer', icon: 'alarm-symbolic', shortcut: 'start-timer', run: () => launcher.push(tracking.view)} satisfies Action]
                         : [],
                 ],
             },
@@ -265,4 +281,8 @@ function copyHint(run: string, password: string, username: string): string {
         passwordKeys && `${passwordKeys} copies a password`,
         username && `${username} the username`,
     ].filter(Boolean).join(', ');
+}
+
+function capitalize(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
 }

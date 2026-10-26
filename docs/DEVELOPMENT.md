@@ -23,7 +23,7 @@ src/lib/output.ts       secret clipboard, virtual keyboard, timers
 src/lib/subprocess.ts   Gio.Subprocess wrapper; secrets go over stdin, never argv
 src/calc/               calculator: units, math, dates and time zones (pure, unit tested), ECB rates
 src/passwords/          Vault interface, rbw and 1Password vaults, the D-Bus pinentry service
-src/clockify/           API client, provider, task grouping and @project/#tag parsing
+src/timer/              time tracking: provider, Clockify and custom server backends, task grouping, @project/#tag parsing
 src/emoji/              emoji data (Emojibase, English + German) and search
 src/system/             lock, suspend, power and desktop toggles
 src/t3code/             active T3 Code sessions from its state database
@@ -53,23 +53,25 @@ off. The launcher reads it live, matches key presses against it and shows the cu
 footer and the action panel. The preferences build the *Shortcuts* page from the same list, so a
 new action shortcut only needs an entry there.
 
-Each feature is a provider with its own view (Passwords, Clockify, Emoji) plus a few methods
+Each feature is a provider with its own view (Passwords, time tracking, Emoji) plus a few methods
 the start view uses: `search(query, limit)` for the combined results, `commands()`, and
 `recent(id)` to turn an id from the *Recent* list back into an item. `Root` (`src/root.ts`) puts
 it together: the calculator answer first, then a command whose name starts with the query, then
-passwords, Clockify entries, the other commands and fallbacks. In the start view every word of
+passwords, time entries, the other commands and fallbacks. In the start view every word of
 the query has to match, so `2 min in year` doesn't list everything containing "in".
 
 `Onboarding` (`src/onboarding.ts`) is the *Getting Started* view. `Root.open()` pushes it on top
 of the start view until the `onboarding-done` key is set, which happens when it is first shown;
 `enable()` also posts a notification until then. Its rows read state the providers already
-have: `Passwords.vaults()` (with `Vault.installed`, from the CLI on PATH), `Clockify.configured`
+have: `Passwords.vaults()` (with `Vault.installed`, from the CLI on PATH), `TimeTracking.configured`
 and `.error`, `T3Code.available`. *Connect* calls `Passwords.connect()`, which turns the vault
 on, runs `Vault.setUp()` (rbw's account email and server, asked with the visible `Launcher.ask()`
 prompt and written with `rbw config set`, followed by `rbw stop-agent` so the next unlock logs in
 again),
-installs the pinentry bridge for rbw, and unlocks. For Clockify, `ClockifyApi.verify()` checks
-a key against `/user` before it is saved. A non-empty query is passed to the start view's search.
+installs the pinentry bridge for rbw, and unlocks. For time tracking, `Backend.verify()` checks
+a key before it is saved: `ClockifyApi` against `/user`, `ServerApi` (a custom server) against `/me`.
+`TimeTracking` (`src/timer/tracking.ts`) works with either through the `Backend` interface in
+`src/timer/backend.ts`; the `time-tracker` key picks one. A non-empty query is passed to the start view's search.
 
 Styling comes from the shell theme. The window is a `.popup-menu-content`, rows are
 `.popup-menu-item`s and the search field is a plain `StEntry`, so light and dark styles and the

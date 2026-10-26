@@ -2,7 +2,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 
-import {timeAgo} from '../clockify/tasks.ts';
+import {timeAgo} from '../timer/tasks.ts';
 import type {Item, Launcher, View} from '../lib/launcher.ts';
 import {notifyError} from '../lib/output.ts';
 import type {Recents} from '../lib/recents.ts';
