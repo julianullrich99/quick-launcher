@@ -131,7 +131,7 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 
 | Key | Action |
 | --- | --- |
-| <kbd>Enter</kbd> | open the website and log in (copy password for items without one) |
+| <kbd>Enter</kbd> | open the website and log in (copy password for items without one); choose copy or type password instead in the preferences |
 | <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
 | <kbd>Ctrl</kbd><kbd>C</kbd> | copy username (with text selected in the search field, copies that text instead) |
 | <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |

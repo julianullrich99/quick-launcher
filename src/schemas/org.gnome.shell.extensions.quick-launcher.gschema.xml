@@ -58,9 +58,14 @@
       <default>8</default>
       <summary>Delay between typed characters in milliseconds</summary>
     </key>
-    <key name="browser-login" type="b">
-      <default>true</default>
-      <summary>Enter on an item with a website opens it and fills the login through the browser extension</summary>
+    <key name="password-action" type="s">
+      <choices>
+        <choice value="login"/>
+        <choice value="copy"/>
+        <choice value="type"/>
+      </choices>
+      <default>'login'</default>
+      <summary>What Enter does on a password: open its website and log in (copy for items without one), copy or type the password</summary>
     </key>
     <key name="bitwarden-autofill-keys" type="s">
       <default>''</default>

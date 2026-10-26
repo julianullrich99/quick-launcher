@@ -54,27 +54,18 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
             ['app', 'Desktop app', 'Needs “Integrate with 1Password CLI” in the app’s developer settings'],
             ['password', 'Master password', 'Typed into the launcher; the session lives in memory only'],
         ] as const;
-        const unlock = new Adw.ComboRow({
-            title: 'Unlock with',
-            model: Gtk.StringList.new(methods.map(m => m[1])),
-        });
-        const syncUnlock = () => {
-            const index = methods.findIndex(m => m[0] === settings.get_string('onepassword-unlock'));
-            unlock.selected = Math.max(0, index);
-            unlock.subtitle = methods[unlock.selected][2];
-        };
-        syncUnlock();
-        unlock.connect('notify::selected', () => settings.set_string('onepassword-unlock', methods[unlock.selected][0]));
-        const unlockId = settings.connect('changed::onepassword-unlock', syncUnlock);
-        unlock.connect('destroy', () => settings.disconnect(unlockId));
-        onePassword.add(unlock);
+        onePassword.add(choiceRow(settings, 'onepassword-unlock', 'Unlock with', methods));
         page.add(onePassword);
 
         const browser = new Adw.PreferencesGroup({
             title: 'Log in on websites',
-            description: 'Enter on an item with a website opens it in your browser, then presses the autofill shortcut of the Bitwarden or 1Password browser extension. Set the same shortcut in the browser, e.g. chrome://extensions/shortcuts',
+            description: '“Open and Log In” opens an item’s website in your browser, then presses the autofill shortcut of the Bitwarden or 1Password browser extension. Set the same shortcut in the browser, e.g. chrome://extensions/shortcuts',
         });
-        browser.add(switchRow(settings, 'browser-login', 'Open website and log in on Enter'));
+        browser.add(choiceRow(settings, 'password-action', 'Enter on a password', [
+            ['login', 'Open and log in', 'Copies the password for items without a website'],
+            ['copy', 'Copy password', 'The website is still in the action panel'],
+            ['type', 'Type password', 'The website is still in the action panel'],
+        ]));
         for (const [key, title] of [
             ['bitwarden-autofill-keys', 'Bitwarden extension “Autofill login” shortcut (empty = only open)'],
             ['onepassword-autofill-keys', '1Password extension autofill shortcut'],
@@ -314,6 +305,20 @@ function launcherShortcutRow(settings: Gio.Settings, id: ShortcutId, title: stri
 function switchRow(settings: Gio.Settings, key: string, title: string): Adw.SwitchRow {
     const row = new Adw.SwitchRow({title});
     settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
+    return row;
+}
+
+/** A combo row for a string key with fixed choices: [value, title, subtitle]. */
+function choiceRow(settings: Gio.Settings, key: string, title: string, choices: readonly (readonly [string, string, string])[]): Adw.ComboRow {
+    const row = new Adw.ComboRow({title, model: Gtk.StringList.new(choices.map(c => c[1]))});
+    const sync = () => {
+        row.selected = Math.max(0, choices.findIndex(c => c[0] === settings.get_string(key)));
+        row.subtitle = choices[row.selected][2];
+    };
+    sync();
+    row.connect('notify::selected', () => settings.set_string(key, choices[row.selected][0]));
+    const id = settings.connect(`changed::${key}`, sync);
+    row.connect('destroy', () => settings.disconnect(id));
     return row;
 }
 

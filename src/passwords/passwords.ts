@@ -276,7 +276,24 @@ export class Passwords {
 
     #item(item: VaultItem): Item {
         const run = (verb: 'copy' | 'type', what: What) => () => void this.#perform(item, verb, what);
-        const website = this.#settings.get_boolean('browser-login') ? websiteOf(item) : null;
+        const website = websiteOf(item);
+        const actions: Action[] = [
+            ...website ? [{
+                title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, website),
+            } satisfies Action] : [],
+            {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
+            {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: 'copy-username', run: run('copy', 'user')},
+            {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: run('type', 'password')},
+            {title: 'Type Username and Password', icon: 'input-keyboard-symbolic', shortcut: 'type-login', run: run('type', 'login')},
+            {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: 'copy-totp', run: run('copy', 'totp')},
+            {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: 'type-username', run: run('type', 'user')},
+            {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: 'type-totp', run: run('type', 'totp')},
+        ];
+        // The chosen main action moves to the front, where Enter runs it.
+        const main = {login: 'Open and Log In', copy: 'Copy Password', type: 'Type Password'}[this.#settings.get_string('password-action')];
+        const index = actions.findIndex(a => a.title === main);
+        if (index > 0)
+            actions.unshift(...actions.splice(index, 1));
         return {
             id: item.id,
             icon: {name: KIND_ICONS[item.kind]},
@@ -284,18 +301,7 @@ export class Passwords {
             subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
             accessory: this.#state(item.vault).status === 'unlocked' ? undefined : 'Locked',
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
-            actions: [
-                ...website ? [{
-                    title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, website),
-                } satisfies Action] : [],
-                {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
-                {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: 'copy-username', run: run('copy', 'user')},
-                {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: run('type', 'password')},
-                {title: 'Type Username and Password', icon: 'input-keyboard-symbolic', shortcut: 'type-login', run: run('type', 'login')},
-                {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: 'copy-totp', run: run('copy', 'totp')},
-                {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: 'type-username', run: run('type', 'user')},
-                {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: 'type-totp', run: run('type', 'totp')},
-            ],
+            actions,
         };
     }
 
