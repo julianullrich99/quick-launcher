@@ -11,6 +11,10 @@ export default tseslint.config(
         languageOptions: {globals: {global: 'readonly'}},
     },
     {
+        files: ['tools/dev-loader.js'],
+        languageOptions: {globals: {console: 'readonly', TextDecoder: 'readonly'}},
+    },
+    {
         files: ['test/**/*.ts', 'scripts/**/*.js', '*.js'],
         languageOptions: {globals: globals.node},
     },

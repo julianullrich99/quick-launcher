@@ -70,6 +70,9 @@ make install
 
 Log out and back in before enabling the extension. Run `make pack` to build an installable zip.
 
+While working on it, `make reload` installs a small loader instead and swaps in each new build
+without logging out; only the first `make reload` needs one more log out.
+
 ## Getting started
 
 After you enable the extension, a notification points you to the shortcut. The first time you

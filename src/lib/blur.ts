@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -10,8 +11,10 @@ const TAPS = 96;
  * Blurs the actor and cuts it to a rounded rectangle in one pass.
  * Shell.BlurEffect can't be rounded and stops blurring under another effect.
  */
-const RoundedBlur = GObject.registerClass(
-class RoundedBlur extends Shell.GLSLEffect {
+const RoundedBlur = GObject.registerClass({
+    // Unique per load: `make reload` imports this module again in the same session.
+    GTypeName: `QuickLauncherRoundedBlur${GLib.uuid_string_random().replaceAll('-', '')}`,
+}, class RoundedBlur extends Shell.GLSLEffect {
     override vfunc_build_pipeline() {
         this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, 'uniform vec2 size;\nuniform float radius;\nuniform float blur;', `
             vec2 uv = cogl_tex_coord0_in.xy;

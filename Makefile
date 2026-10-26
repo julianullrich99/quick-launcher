@@ -3,7 +3,7 @@ BUILD   := dist
 TARGET  := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 ZIP     := $(UUID).shell-extension.zip
 
-.PHONY: all build schemas assets install uninstall pack test check screenshots clean enable disable logs
+.PHONY: all build schemas assets install reload uninstall pack test check screenshots clean enable disable logs
 
 all: assets
 
@@ -27,6 +27,20 @@ install: assets
 	cp -r $(BUILD)/. $(TARGET)/
 	@echo "Installed to $(TARGET)"
 	@echo "Log out and back in (Wayland), then: gnome-extensions enable $(UUID)"
+
+# Swaps in the latest build without logging out; needs one log out after the first run.
+reload: assets
+	@test -f $(TARGET)/live/current || echo "First reload: log out and back in once, after that make reload is enough"
+	$(eval VERSION := $(shell date +%s%N))
+	mkdir -p $(TARGET)
+	rm -rf $(TARGET)/live
+	cp -r $(BUILD)/. $(TARGET)/
+	mkdir -p $(TARGET)/live/$(VERSION)
+	cp -r $(BUILD)/. $(TARGET)/live/$(VERSION)/
+	cp tools/dev-loader.js $(TARGET)/extension.js
+	echo $(VERSION) > $(TARGET)/live/current
+	-gnome-extensions disable $(UUID)
+	gnome-extensions enable $(UUID)
 
 uninstall:
 	rm -rf $(TARGET)
