@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -84,17 +85,22 @@ function stripScheme(uri: string): string {
     return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '');
 }
 
-/** The item's first web address, with https:// if it has no scheme */
-function websiteOf(item: VaultItem): string | null {
-    if (item.kind !== 'login')
-        return null;
-    for (const uri of item.urls) {
-        const url = /^[a-z][a-z0-9+.-]*:/i.test(uri) ? uri : `https://${uri}`;
-        if (/^https?:\/\/[^/\s]+\.[^/\s]+/i.test(url))
-            return url;
-    }
-    return null;
+/** Every web address of a login, with https:// where it has no scheme */
+function websitesOf(item: VaultItem): string[] {
+    if (item.kind !== 'login' && item.kind !== 'other')
+        return [];
+    return item.urls
+        .map(uri => /^[a-z][a-z0-9+.-]*:/i.test(uri) ? uri : `https://${uri}`)
+        .filter(url => /^https?:\/\/[^/\s]+\.[^/\s]+/i.test(url));
 }
+
+/** "123456" → "123 456" */
+function formatCode(code: string): string {
+    return /^\d{6,8}$/.test(code) ? code.replace(/^(\d{3,4})(\d{3,4})$/, '$1 $2') : code;
+}
+
+/** vault id → [item id, item name] of the item whose password unlocks it */
+type Links = Record<string, [string, string]>;
 
 function searchFields(item: VaultItem): Field[] {
     return [
@@ -344,10 +350,13 @@ export class Passwords {
 
     #item(item: VaultItem): Item {
         const run = (verb: 'copy' | 'type', what: What) => () => void this.#perform(item, verb, what);
-        const website = websiteOf(item);
+        // A locked vault's item is only a cached name: there's no website until it is unlocked.
+        const unlocked = this.#state(item.vault).status === 'unlocked';
+        const website = unlocked ? websitesOf(item)[0] ?? null : null;
         const actions: Action[] = [
             ...website ? [{
-                title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, website),
+                title: 'Open and Log In', icon: 'web-browser-symbolic', shortcut: 'open-website',
+                run: () => void this.#logIn(item, website),
             } satisfies Action] : [],
             {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
             {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: 'copy-username', run: run('copy', 'user')},
@@ -356,6 +365,9 @@ export class Passwords {
             {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: 'copy-totp', run: run('copy', 'totp')},
             {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: 'type-username', run: run('type', 'user')},
             {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: 'type-totp', run: run('type', 'totp')},
+            // The item's fields, like 1Password's Quick Access; a locked vault is unlocked first.
+            {title: 'Show Item', icon: 'go-next-symbolic', run: () => void this.#showItem(item)},
+            ...this.#linkActions(item),
         ];
         // The chosen main action moves to the front, where Enter runs it.
         const main = {login: 'Open and Log In', copy: 'Copy Password', type: 'Type Password'}[this.#settings.get_string('password-action')];
@@ -367,9 +379,170 @@ export class Passwords {
             icon: {name: KIND_ICONS[item.kind]},
             title: item.name || '(unnamed)',
             subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
-            accessory: this.#state(item.vault).status === 'unlocked' ? undefined : 'Locked',
+            accessory: unlocked ? undefined : 'Locked',
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
             actions,
+        };
+    }
+
+    /** "Use to Unlock Bitwarden": the item's password becomes another vault's master password. */
+    #linkActions(item: VaultItem): Action[] {
+        const links = this.#links();
+        return this.#enabledVaults
+            .filter(vault => vault !== item.vault && vault.asksPassword)
+            .map(vault => links[vault.id]?.[0] === item.id
+                ? {title: `Stop Unlocking ${vault.name} with This`, icon: 'changes-allow-symbolic', run: () => this.#link(vault, null)}
+                : {title: `Use to Unlock ${vault.name}`, icon: 'system-lock-screen-symbolic', run: () => this.#link(vault, item)});
+    }
+
+    /** The fields of an unlocked item: Enter copies one, Shift+Enter types it. */
+    #itemView(item: VaultItem): View {
+        let code: string | null = null;
+        const view: View = {
+            title: item.name || '(unnamed)',
+            icon: KIND_ICONS[item.kind],
+            placeholder: `Search ${item.name || 'item'}…`,
+            search: query => {
+                const text = query.trim().toLowerCase();
+                const fields = this.#fields(item, code)
+                    .filter(f => !text || `${f.subtitle} ${f.id === 'field:password' ? '' : f.title}`.toLowerCase().includes(text));
+                return [{items: fields}];
+            },
+            actions: () => this.#viewActions(),
+        };
+
+        // The TOTP code is shown and renewed every 30 seconds while the item is open.
+        const loadCode = async () => {
+            try {
+                code = (await item.vault.secret(item, 'totp')) || null;
+            } catch {
+                code = null;
+            }
+            if (this.#destroyed || !code || this.#launcher.view !== view)
+                return;
+            this.#launcher.refresh();
+            this.#timers.add(30_000 - Date.now() % 30_000 + 300, () => {
+                if (!this.#destroyed && this.#launcher.isOpen && this.#launcher.view === view)
+                    void loadCode();
+            });
+        };
+        if (item.kind === 'login' || item.kind === 'other')
+            void loadCode();
+        return view;
+    }
+
+    #fields(item: VaultItem, code: string | null): Item[] {
+        const source = {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass};
+        const field = (what: What, icon: string, title: string): Item => ({
+            id: `field:${what}`,
+            icon: {name: icon},
+            title,
+            subtitle: what === 'totp' ? 'One-time code' : LABELS[what],
+            source,
+            actions: [
+                {title: `Copy ${LABELS[what]}`, icon: 'edit-copy-symbolic', run: () => void this.#perform(item, 'copy', what)},
+                {title: `Type ${LABELS[what]}`, icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: () => void this.#perform(item, 'type', what)},
+            ],
+        });
+        const fields: Item[] = [];
+        if (item.user)
+            fields.push(field('user', 'avatar-default-symbolic', item.user));
+        if (item.kind !== 'note' && item.kind !== 'identity')
+            fields.push(field('password', 'dialog-password-symbolic', '•'.repeat(12)));
+        if (code)
+            fields.push(field('totp', 'preferences-system-time-symbolic', formatCode(code)));
+        if (item.user && item.kind !== 'note' && item.kind !== 'identity') {
+            fields.push({
+                ...field('login', 'input-keyboard-symbolic', 'Username and Password'),
+                subtitle: 'Tab between them',
+                actions: [{title: 'Type Username and Password', icon: 'input-keyboard-symbolic', run: () => void this.#perform(item, 'type', 'login')}],
+            });
+        }
+        for (const [i, url] of websitesOf(item).entries()) {
+            fields.push({
+                id: `field:url:${i}`,
+                icon: {name: 'web-browser-symbolic'},
+                title: stripScheme(url),
+                subtitle: 'Website',
+                source,
+                actions: [
+                    {title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, url)},
+                    {title: 'Copy Address', icon: 'edit-copy-symbolic', run: () => {
+                        this.#launcher.close();
+                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, url);
+                        osd('edit-copy-symbolic', 'Address copied');
+                    }},
+                ],
+            });
+        }
+        return fields;
+    }
+
+    /** Unlocks the item's vault if needed, then shows its fields. */
+    async #showItem(found: VaultItem) {
+        const item = await this.#unlocked(found);
+        if (this.#destroyed || !this.#launcher.isOpen)
+            return;
+        if (!item) {
+            if (this.#state(found.vault).status === 'unlocked')
+                Main.notify(found.vault.name, `${found.name} is no longer in the vault`);
+            return;
+        }
+        this.#recents.add(`${RECENT_PREFIX}${item.id}`);
+        this.#launcher.push(this.#itemView(item), '', 'field:password');
+    }
+
+    // --- Unlocking a vault with another vault's item ---
+
+    #links(): Links {
+        return this.#settings.get_value('unlock-with').deepUnpack() as Links;
+    }
+
+    #link(vault: Vault, item: VaultItem | null) {
+        const links = this.#links();
+        if (item)
+            links[vault.id] = [item.id, item.name];
+        else
+            delete links[vault.id];
+        this.#settings.set_value('unlock-with', new GLib.Variant('a{s(ss)}', links));
+        this.#launcher.close();
+        osd('system-lock-screen-symbolic', item ? `${item.name} unlocks ${vault.name}` : `${vault.name} asks for its password again`);
+    }
+
+    /** `vault`'s master password from the item linked to it, unlocking that item's vault first; null to ask instead. */
+    async #linkedPassword(vault: Vault): Promise<string | null> {
+        const [itemId, name] = this.#links()[vault.id] ?? [];
+        const source = itemId ? this.#vaults.find(v => itemId.startsWith(`${v.id}:`)) : undefined;
+        // Two vaults unlocking each other would wait forever.
+        if (!source || source === vault || !source.enabled || this.#state(source).status === 'unlocking')
+            return null;
+        try {
+            const placeholder = this.#state(source).items.find(i => i.id === itemId) ?? {
+                id: itemId, nativeId: itemId.slice(source.id.length + 1), vault: source,
+                name, user: '', location: '', urls: [], kind: 'other',
+            } satisfies VaultItem;
+            const item = await this.#unlocked(placeholder);
+            return item ? await source.secret(item, 'password') || null : null;
+        } catch (e) {
+            console.warn(`quick-launcher: Could not unlock ${vault.name} with ${name}`, e);
+            return null;
+        }
+    }
+
+    /** The prompter for unlocking `vault`: its first password question is answered by the linked item. */
+    #prompterFor(vault: Vault): Prompter {
+        let tried = false;
+        return {
+            ...this.#prompter,
+            askSecret: async (prompt, description) => {
+                if (!tried) {
+                    tried = true;
+                    const password = await this.#linkedPassword(vault);
+                    if (password !== null)
+                        return password;
+                }
+                return this.#prompter.askSecret(prompt, description);
+            },
         };
     }
 
@@ -520,7 +693,7 @@ export class Passwords {
 
         this.#setState(vault, {status: 'unlocking'});
         try {
-            const ok = await vault.unlock(this.#prompter);
+            const ok = await vault.unlock(this.#prompterFor(vault));
             if (this.#destroyed)
                 return;
             this.#setState(vault, {status: ok ? 'checking' : 'locked'});
@@ -578,8 +751,15 @@ export class Passwords {
         }
     }
 
-    #askPin({title, description, prompt, error}: PinRequest): Promise<string | null> {
-        // rbw sends title "rbw" and prompt "Master Password".
+    async #askPin({title, description, prompt, error}: PinRequest): Promise<string | null> {
+        // rbw sends title "rbw" and prompt "Master Password". Only the first try is
+        // answered from a linked item; after a wrong password rbw asks again with an error.
+        const rbw = this.#vaults.find(v => v instanceof RbwVault);
+        if (title === 'rbw' && rbw && !error && /master password/i.test(prompt)) {
+            const password = await this.#linkedPassword(rbw);
+            if (password !== null)
+                return password;
+        }
         const name = title === 'rbw' ? 'Bitwarden' : title;
         return this.#launcher.askSecret({
             prompt: [name, (prompt || 'password').toLowerCase()].filter(Boolean).join(' '),
@@ -597,18 +777,19 @@ export class Passwords {
 
     /** Unlocks the item's vault if it is locked; resolves the current item, or null if it stayed locked. */
     async #unlocked(item: VaultItem): Promise<VaultItem | null> {
-        if (this.#state(item.vault).status === 'unlocked')
-            return item;
-        await this.connect(item.vault);
-        if (this.#destroyed || this.#state(item.vault).status !== 'unlocked')
-            return null;
+        if (this.#state(item.vault).status !== 'unlocked') {
+            await this.connect(item.vault);
+            if (this.#destroyed || this.#state(item.vault).status !== 'unlocked')
+                return null;
+        }
+        // Always the loaded item: a row shown while the vault was locked only has the cached name.
         return this.#state(item.vault).items.find(i => i.id === item.id) ?? null;
     }
 
     async #perform(found: VaultItem, verb: 'copy' | 'type', what: What, retry = true) {
         this.#recents.add(`${RECENT_PREFIX}${found.id}`);
-        // The username is cached, everything else needs the vault unlocked; that asks right in the launcher.
-        const item = what === 'user' ? found : await this.#unlocked(found);
+        // Only names are cached, so everything needs the vault unlocked; that asks right in the launcher.
+        const item = await this.#unlocked(found);
         if (!item) {
             if (!this.#destroyed && this.#state(found.vault).status === 'unlocked')
                 Main.notify(found.vault.name, `${found.name} is no longer in the vault`);

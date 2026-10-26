@@ -18,7 +18,8 @@ like math, a unit conversion, a date or a time zone is answered right away.
   [`op` CLI](https://developer.1password.com/docs/cli/)), each entry tagged with its vault's logo
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
-- Items stay searchable while their vault is locked; using one asks to unlock it first
+- Items stay searchable by name while their vault is locked; using one unlocks the vault first
+- Unlock Bitwarden with its master password stored in 1Password (or the other way round)
 - Open an item's website and log in through the Bitwarden or 1Password browser extension
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Generate passwords and PINs; type a number to set the length
@@ -103,7 +104,8 @@ usual. *Getting Started* stays available as a command.
 
 When the launcher opens, your recently used passwords, entries and emoji are listed first, then
 all commands. Typing searches everything at once and groups the results: a calculator answer on
-top, then passwords, Clockify entries and commands. Only items matching every word you typed are
+top, then whatever of it you used recently (newest first, so what you search often is right there), then passwords,
+time tracking entries and commands. Only items matching every word you typed are
 shown. Below them, *Use “…” with* starts a timer with the text or searches passwords or emoji
 for it.
 
@@ -138,6 +140,7 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 | Key | Action |
 | --- | --- |
 | <kbd>Enter</kbd> | open the website and log in (copy password for items without one); choose copy or type password instead in the preferences |
+| <kbd>Ctrl</kbd><kbd>O</kbd> | open the website and log in |
 | <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
 | <kbd>Ctrl</kbd><kbd>C</kbd> | copy username (with text selected in the search field, copies that text instead) |
 | <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
@@ -146,7 +149,15 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 | <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
 | <kbd>Ctrl</kbd><kbd>G</kbd> | new passwords (in *Generate Password*; <kbd>Enter</kbd> copies, <kbd>Shift</kbd><kbd>Enter</kbd> types) |
 
-**Logging in on a website:** for a login with a website, <kbd>Enter</kbd> opens it in your default
+*Show Item* in the action panel lists the username, password, TOTP code and websites; <kbd>Enter</kbd>
+copies one, <kbd>Shift</kbd><kbd>Enter</kbd> types it.
+
+<p align="center">
+  <img src="docs/item.png" alt="An item's username, password, one-time code and website; Enter copies the selected one" width="600">
+</p>
+
+**Logging in on a website:** for a login with a website, <kbd>Ctrl</kbd><kbd>O</kbd> (or <kbd>Enter</kbd> on
+the website in the item) opens it in your default
 browser (a new tab if it is running). For 1Password items it then waits 2.5 seconds for the page
 to load and presses <kbd>Ctrl</kbd><kbd>\\</kbd>, the 1Password browser extension's autofill
 shortcut, which fills only logins that match the page; the keys are only pressed if the browser
@@ -156,7 +167,15 @@ own lock, so for Bitwarden items the website just opens; to fill those too, set 
 well. Turn the feature off there to copy the password on <kbd>Enter</kbd> again.
 
 A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
-<kbd>Enter</kbd> on it.
+<kbd>Enter</kbd> on it. Its items still show up by name, marked *Locked*; using one asks to
+unlock the vault first, then does what you chose right away.
+
+**Unlocking one vault with another:** keep Bitwarden's master password in 1Password (or the
+other way round), open the action panel (<kbd>Ctrl</kbd><kbd>K</kbd>) on that item and choose
+*Use to Unlock Bitwarden*. From then on, unlocking Bitwarden takes the password from that item,
+unlocking 1Password first if needed, instead of asking. If it is wrong, you are asked as usual.
+The settings show the linked item and can remove it. For 1Password this only applies when it is
+unlocked with the master password rather than the desktop app.
 
 <p align="center">
   <img src="docs/unlock.png" alt="Typing the 1Password master password into the launcher" width="600">
@@ -229,8 +248,17 @@ Timers run in Clockify, or on a [custom server](#custom-time-tracking-server). M
 <kbd>Enter</kbd> starts an entry again, or stops it if it is running; *Stop Timer* is also a
 command while a timer runs, with how long it runs. Starting a timer stops the running one at the same second, so there are no gaps.
 
-While a timer runs, the top bar shows it and how long it runs, also for timers started elsewhere;
-its menu stops the timer. Until time tracking is connected, *Connect Clockify* is a command.
+While a timer runs, the top bar shows it and how long it runs, also for timers started elsewhere
+(checked while you're at the computer); its menu stops the timer. Until time tracking is connected,
+*Connect Clockify* is a command.
+
+Clockify's Free plan allows only 30 requests per hour, so the extension asks sparingly: one request every 5 minutes for
+the running timer (none after 10 idle minutes or while the screen is locked), recent entries at most every 15 minutes
+when the launcher opens, projects and tags every 6 hours (*Reload* fetches everything right away). Switching timers
+costs two requests. When was fetched what is cached on disk, so unlocking the screen doesn't refetch anything, and
+background requests stop at 20 per hour to keep the rest for starting and stopping timers. When the limit is hit
+anyway, the top bar dims and shows the last known timer, and automatic requests pause for 15 minutes. A custom server
+is asked every 30 seconds whether the running timer changed.
 
 <p align="center">
   <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">

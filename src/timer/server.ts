@@ -14,6 +14,9 @@ export class ServerApi implements Backend {
     readonly color = '#26a269';
     readonly keysUrl = null;
     readonly keyName = 'token';
+    // Asking is cheap: the running timer answers 304 while it is unchanged.
+    readonly pace = {entries: 0, catalog: 0, running: 0, budget: Infinity};
+    readonly sentLastHour = 0;
     readonly #settings: Gio.Settings;
     readonly #http = new Http();
     /** The ETag of the running timer as of the last fetch */
@@ -94,10 +97,12 @@ export class ServerApi implements Backend {
         return {tasks: serverTasks(recent.data ?? [], timer.data), projects, tags};
     }
 
-    async runningChanged(): Promise<boolean> {
-        const {status, etag} = await this.#request('GET', '/timer', {etag: this.#etag});
-        // Without an ETag it can't tell, so it says changed.
-        return status !== 304 && (etag === null || etag !== this.#etag);
+    async running(): Promise<Task | null | undefined> {
+        const {status, data, etag} = await this.#request<ServerEntry>('GET', '/timer', {etag: this.#etag});
+        if (status === 304 || (etag !== null && etag === this.#etag))
+            return undefined;
+        this.#etag = etag;
+        return serverTasks([], data)[0] ?? null;
     }
 
     async start({description, projectId, taskId, tagIds}: Task) {

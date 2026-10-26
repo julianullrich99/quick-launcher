@@ -2,13 +2,21 @@ import type Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import type {Backend} from './backend.ts';
-import {Http} from './http.ts';
+import {Http, HttpError} from './http.ts';
 import {distinctTasks, type Project, type Tag, type Task, type TimeEntry} from './tasks.ts';
 
 interface Me {
     id: string;
     workspace: string;
 }
+
+/**
+ * When the last workspace requests were sent; those count towards Clockify's limit, /user doesn't.
+ * Module-level, so it survives the extension being disabled and enabled again on screen lock.
+ */
+const sent: number[] = [];
+
+const MINUTE = 60_000;
 
 function now(): string {
     return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -22,6 +30,8 @@ export class ClockifyApi implements Backend {
     readonly keyHint = 'Create one in Clockify under Preferences → Advanced → API keys';
     readonly keyName = 'API key';
     readonly missing = null;
+    // The Free plan allows 30 workspace requests per hour, so everything is fetched sparingly.
+    readonly pace = {entries: 15 * MINUTE, catalog: 6 * 60 * MINUTE, running: 5 * MINUTE, budget: 20};
     readonly #settings: Gio.Settings;
     readonly #http = new Http();
     #me: Promise<Me> | null = null;
@@ -39,6 +49,13 @@ export class ClockifyApi implements Backend {
         return `${this.#settings.get_string('clockify-api-url')}|${this.#settings.get_string('clockify-api-key')}`;
     }
 
+    get sentLastHour(): number {
+        const hourAgo = Date.now() - 3_600_000;
+        while (sent.length && sent[0] < hourAgo)
+            sent.shift();
+        return sent.length;
+    }
+
     get account(): string {
         return GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this.#credentials, -1) ?? '';
     }
@@ -50,6 +67,8 @@ export class ClockifyApi implements Backend {
         key?: string;
     } = {}): Promise<T> {
         const base = this.#settings.get_string('clockify-api-url').replace(/\/+$/, '');
+        if (path.startsWith('/workspaces/'))
+            sent.push(Date.now());
         const params = Object.entries(query)
             .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
         const {data} = await this.#http.request<T>(method, `${base}${path}${params ? `?${params}` : ''}`, {
@@ -91,27 +110,39 @@ export class ClockifyApi implements Backend {
         return `/workspaces/${workspace}/user/${id}/time-entries`;
     }
 
-    async fetch(): Promise<{tasks: Task[]; projects: Project[]; tags: Tag[]}> {
+    async fetch(known: {projects: Project[]; tags: Tag[]} | null): Promise<{tasks: Task[]; projects: Project[]; tags: Tag[]}> {
         const {workspace} = await this.#user();
-        const [entries, allProjects, allTags] = await Promise.all([
+        const [entries, catalog] = await Promise.all([
             this.#request<TimeEntry[]>('GET', await this.#entriesPath(), {query: {'hydrated': true, 'page-size': 200}}),
-            this.#request<Project[]>('GET', `/workspaces/${workspace}/projects`, {query: {'archived': false, 'page-size': 500}}),
-            this.#request<Tag[]>('GET', `/workspaces/${workspace}/tags`, {query: {'archived': false, 'page-size': 500}}),
+            known ?? Promise.all([
+                this.#request<Project[]>('GET', `/workspaces/${workspace}/projects`, {query: {'archived': false, 'page-size': 500}}),
+                this.#request<Tag[]>('GET', `/workspaces/${workspace}/tags`, {query: {'archived': false, 'page-size': 500}}),
+            ]).then(([allProjects, allTags]) => ({
+                // Only what parseDraft() and distinctTasks() need, to keep the cache small.
+                projects: allProjects.map(({id, name, billable, clientName, color}) => ({id, name, billable, clientName, color})),
+                tags: allTags.map(({id, name}) => ({id, name})),
+            })),
         ]);
-        // Only what parseDraft() and distinctTasks() need, to keep the cache small.
-        const projects = allProjects.map(({id, name, billable, clientName, color}) =>
-            ({id, name, billable, clientName, color}));
-        const tags = allTags.map(({id, name}) => ({id, name}));
+        const {projects, tags} = catalog;
         return {tasks: distinctTasks(entries, projects, tags), projects, tags};
     }
 
+    async running(projects: Project[], tags: Tag[]): Promise<Task | null> {
+        const entries = await this.#request<TimeEntry[]>('GET', await this.#entriesPath(),
+            {query: {'in-progress': true, 'hydrated': true}});
+        return entries?.length ? distinctTasks(entries.slice(0, 1), projects, tags)[0] ?? null : null;
+    }
+
     async stop(end = now()): Promise<boolean> {
-        const path = await this.#entriesPath();
-        const running = await this.#request<TimeEntry[]>('GET', path, {query: {'in-progress': true}});
-        if (!running?.length)
-            return false;
-        await this.#request('PATCH', path, {body: {end}});
-        return true;
+        // One request instead of asking first: Clockify answers 404 when no timer runs.
+        try {
+            await this.#request('PATCH', await this.#entriesPath(), {body: {end}});
+            return true;
+        } catch (e) {
+            if (e instanceof HttpError && (e.status === 404 || e.status === 400))
+                return false;
+            throw e;
+        }
     }
 
     /** Stops the running timer at the same instant, so there's no gap. */

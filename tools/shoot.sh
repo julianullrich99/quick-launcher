@@ -98,6 +98,16 @@ keys Control_L k
 sleep 0.4
 shot actions
 keys Escape
+sleep 0.3
+keys Control_L k
+sleep 0.3
+type_text "show item"
+sleep 0.3
+keys Return
+sleep 1
+shot item
+keys Escape
+sleep 0.3
 clear_query
 
 type_text "2 min in year"

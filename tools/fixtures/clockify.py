@@ -41,8 +41,9 @@ class H(BaseHTTPRequestHandler):
     def do_PATCH(self):
         body = self.rfile.read(int(self.headers['Content-Length'])).decode()
         log.write(f'PATCH {self.path} {body}\n'); log.flush()
-        for e in entries:
-            if not e['timeInterval']['end']: e['timeInterval']['end'] = json.loads(body)['end']
+        running = [e for e in entries if not e['timeInterval']['end']]
+        if not running: return self.send_error(404)  # like Clockify when no timer runs
+        for e in running: e['timeInterval']['end'] = json.loads(body)['end']
         self.send({})
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])).decode())

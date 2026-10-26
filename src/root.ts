@@ -93,14 +93,8 @@ export class Root {
     #search(query: string): Section[] {
         const text = query.trim();
         if (!text) {
-            const {recents, tracking, passwords, emoji, t3code} = this.#p;
-            // The running timer is under Commands as "Stop Timer", not here where Enter would stop it.
-            const recent = recents.ids
-                .map(id => passwords.recent(id) ?? tracking.recent(id) ?? t3code.recent(id) ?? emoji.recent(id))
-                .filter((item): item is Item => item !== null)
-                .slice(0, 6);
             return [
-                {title: 'Recent', items: recent},
+                {title: 'Recent', items: this.#recent().slice(0, 6)},
                 {title: 'Commands', items: this.#commands()},
             ];
         }
@@ -111,23 +105,42 @@ export class Root {
         // A command whose name starts with the query goes first ("lock", "sus…").
         const strong = commands.length > 0 && normalize(commands[0].title).startsWith(normalize(text));
 
+        // Recently used matches first, newest first, so what is searched often is right on top.
+        const recent = this.#recent();
+        const matches = new Set(new SearchIndex(recent, item => [
+            [10, item.title], [5, item.subtitle], [2, item.keywords?.split(' ')],
+        ]).search(text, {all: true}));
+        const recentMatches = recent.filter(item => matches.has(item)).slice(0, 4);
+        const shown = new Set(recentMatches.map(item => item.id));
+        const rest = (items: Item[]) => items.filter(item => !shown.has(item.id));
+
         const sections: Section[] = [];
         const answer = this.#answer(text);
         if (answer)
             sections.push({items: [answer]});
+        sections.push({title: 'Recent', items: recentMatches});
         if (strong)
             sections.push({title: 'Commands', items: commands});
         if (text.startsWith(':'))
-            sections.push({title: 'Emoji', items: this.#p.emoji.search(text.slice(1), 8)});
-        sections.push({title: 'Passwords', items: this.#p.passwords.search(text, 5)});
-        sections.push({title: 'T3 Code', items: this.#p.t3code.search(text, 5)});
-        sections.push({title: this.#p.tracking.name, items: this.#p.tracking.search(text, 4)});
+            sections.push({title: 'Emoji', items: rest(this.#p.emoji.search(text.slice(1), 8))});
+        sections.push({title: 'Passwords', items: rest(this.#p.passwords.search(text, 5))});
+        sections.push({title: 'T3 Code', items: rest(this.#p.t3code.search(text, 5))});
+        sections.push({title: this.#p.tracking.name, items: rest(this.#p.tracking.search(text, 4))});
         if (!strong)
             sections.push({title: 'Commands', items: commands});
         // Offer "Start timer …" etc. only when the query isn't obviously something else.
         if (!answer && !text.startsWith(':'))
             sections.push({title: `Use “${text}” with…`, items: this.#fallbacks(text)});
         return sections;
+    }
+
+    /** Recently used items, newest first */
+    #recent(): Item[] {
+        const {recents, tracking, passwords, emoji, t3code} = this.#p;
+        // The running timer is under Commands as "Stop Timer", not here where Enter would stop it.
+        return recents.ids
+            .map(id => passwords.recent(id) ?? tracking.recent(id) ?? t3code.recent(id) ?? emoji.recent(id))
+            .filter((item): item is Item => item !== null);
     }
 
     #answer(text: string): Item | null {

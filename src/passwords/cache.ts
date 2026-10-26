@@ -5,11 +5,16 @@ import type {Vault, VaultItem} from './vault.ts';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_async');
 
-type CachedItem = Omit<VaultItem, 'vault'>;
+/** Only what finds an item again; usernames, URLs and folders stay in the vault. */
+type CachedItem = Pick<VaultItem, 'nativeId' | 'name'>;
+
+function trim({nativeId, name}: CachedItem): CachedItem {
+    return {nativeId, name};
+}
 
 /**
- * The item list of each vault on disk, without any secrets, so items can be
- * found while their vault is locked. Using one unlocks the vault first.
+ * The item names of each vault on disk, so items can be found while their
+ * vault is locked. Using one unlocks the vault first.
  */
 export class ItemCache {
     readonly #file = Gio.File.new_for_path(
@@ -20,18 +25,25 @@ export class ItemCache {
     constructor() {
         try {
             const [, bytes] = this.#file.load_contents(null);
-            this.#data = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, CachedItem[]>;
+            const data = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, CachedItem[]>;
+            this.#data = Object.fromEntries(Object.entries(data).map(([vault, items]) => [vault, items.map(trim)]));
+            // Older versions also kept usernames, URLs and folders: drop them from the disk too.
+            if (JSON.stringify(this.#data) !== JSON.stringify(data))
+                void this.#save();
         } catch {
             this.#data = {};
         }
     }
 
+    /** Placeholders for a locked vault's items, with nothing but their names */
     items(vault: Vault): VaultItem[] {
-        return (this.#data[vault.id] ?? []).map(item => ({...item, vault}));
+        return (this.#data[vault.id] ?? []).map(({nativeId, name}) => ({
+            id: `${vault.id}:${nativeId}`, nativeId, vault, name, user: '', location: '', urls: [], kind: 'other',
+        }));
     }
 
     set(vault: Vault, items: VaultItem[]) {
-        this.#data[vault.id] = items.map(({vault: _, ...item}) => item);
+        this.#data[vault.id] = items.map(trim);
         void this.#save();
     }
 

@@ -72,6 +72,9 @@ test('currencies', () => {
     assert.equal(show('100 eur in usd'), '109.00 USD');
     assert.equal(show('100 usd'), '91.74 EUR');
     assert.equal(show('$50'), '45.87 EUR');
+    // A plain number added to an amount is in the same currency.
+    assert.equal(show('254 + 548 usd in eur'), show('802 usd in eur'));
+    assert.equal(show('5 + 3 km in m'), '8,000 m');
     assert.equal(evaluate('100 usd in eur', {...context, rates: undefined}), null);
 });
 
