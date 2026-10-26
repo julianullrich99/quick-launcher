@@ -22,6 +22,7 @@ export const SHORTCUTS = [
     {id: 'copy-totp', group: 'passwords', title: 'Copy TOTP code', defaults: ['<Alt>t']},
     {id: 'type-totp', group: 'passwords', title: 'Type TOTP code', defaults: ['<Shift><Alt>t']},
     {id: 'sync-vaults', group: 'passwords', title: 'Sync vaults', defaults: ['<Control>r']},
+    {id: 'regenerate-password', group: 'passwords', title: 'Regenerate passwords', defaults: ['<Control>g']},
     {id: 'lock-vaults', group: 'passwords', title: 'Lock vaults', defaults: ['<Control>l']},
     {id: 'vault-server', group: 'passwords', title: 'Use another Bitwarden server', defaults: ['<Control>s']},
     {id: 'vault-off', group: 'passwords', title: 'Stop using a password manager', defaults: ['<Control>d']},

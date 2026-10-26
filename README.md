@@ -21,6 +21,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Items stay searchable while their vault is locked; using one asks to unlock it first
 - Open an item's website and log in through the Bitwarden or 1Password browser extension
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
+- Generate passwords and PINs; type a number to set the length
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
 - Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
 - Calculator with units, currencies, percentages, dates, calendar weeks and time zones
@@ -138,6 +139,7 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 | <kbd>Ctrl</kbd><kbd>Enter</kbd> | type username, Tab, password, Enter |
 | <kbd>Alt</kbd><kbd>T</kbd> | copy TOTP code (<kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> types it) |
 | <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
+| <kbd>Ctrl</kbd><kbd>G</kbd> | new passwords (in *Generate Password*; <kbd>Enter</kbd> copies, <kbd>Shift</kbd><kbd>Enter</kbd> types) |
 
 **Logging in on a website:** for a login with a website, <kbd>Enter</kbd> opens it in your default
 browser (a new tab if it is running). For 1Password items it then waits 2.5 seconds for the page

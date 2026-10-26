@@ -9,6 +9,7 @@ import {notifyError, osd, SecretClipboard, Typist, type Timers} from '../lib/out
 import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
 import {setPinentryBridge} from './bridge.ts';
+import {DIGITS, generate, LOWER, SYMBOLS, UPPER} from './generator.ts';
 import {ItemCache} from './cache.ts';
 import {OnePasswordVault} from './onepassword.ts';
 import {PinentryService, type PinRequest} from './pinentry.ts';
@@ -63,6 +64,22 @@ const KIND_ICONS: Record<ItemKind, string> = {
 export const PASSWORDS_COLOR = '#3584e4';
 const RECENT_PREFIX = 'password:';
 
+/** What the generator offers: [id, title, character classes, default length] */
+const RECIPES = [
+    ['strong', 'Letters, Digits and Symbols', [LOWER, UPPER, DIGITS, SYMBOLS], 20],
+    ['alphanumeric', 'Letters and Digits', [LOWER, UPPER, DIGITS], 20],
+    ['pin', 'PIN', [DIGITS], 6],
+] as const;
+
+function randomBytes(count: number): Uint8Array {
+    const stream = Gio.File.new_for_path('/dev/urandom').read(null);
+    try {
+        return stream.read_bytes(count, null).toArray();
+    } finally {
+        stream.close(null);
+    }
+}
+
 function stripScheme(uri: string): string {
     return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '');
 }
@@ -106,10 +123,13 @@ export class Passwords {
     readonly #cache = new ItemCache();
     readonly #timers: Timers;
     #index = new SearchIndex<VaultItem>([], searchFields);
+    /** Generated passwords by recipe and length, so a refresh while the view is open keeps them. */
+    readonly #generated = new Map<string, string>();
     #pinentry: PinentryService | null = null;
     #destroyed = false;
 
     readonly view: View;
+    readonly generatorView: View;
 
     constructor(settings: Gio.Settings, timers: Timers, extensionDir: Gio.File, launcher: Launcher, recents: Recents) {
         this.#settings = settings;
@@ -137,6 +157,20 @@ export class Passwords {
             placeholder: 'Search passwords…',
             search: query => this.#viewSections(query),
             actions: () => this.#viewActions(),
+        };
+        this.generatorView = {
+            title: 'Generate Password',
+            icon: 'dialog-password-symbolic',
+            placeholder: 'Length, e.g. 32…',
+            search: query => this.#generatorSections(query),
+            actions: () => [{
+                title: 'Regenerate', icon: 'view-refresh-symbolic', shortcut: 'regenerate-password',
+                run: () => {
+                    this.#generated.clear();
+                    this.#launcher.refresh();
+                },
+            }],
+            onOpen: () => this.#generated.clear(),
         };
 
         this.#settingsIds = [
@@ -192,6 +226,8 @@ export class Passwords {
             command('passwords', 'dialog-password-symbolic', 'Search Passwords',
                 this.#enabledVaults.map(v => v.name).join(' & ') || 'No vault enabled',
                 () => this.#launcher.push(this.view)),
+            command('generate-password', 'view-refresh-symbolic', 'Generate Password', 'Passwords',
+                () => this.#launcher.push(this.generatorView)),
             command('lock-vaults', 'system-lock-screen-symbolic', 'Lock Vaults', 'Passwords', () => void this.#lockAll()),
             command('sync-vaults', 'view-refresh-symbolic', 'Sync Vaults', 'Passwords', () => void this.#sync()),
         ];
@@ -265,6 +301,38 @@ export class Passwords {
         return query.trim() && items.length
             ? [{items}, {title: 'Locked', items: locked}]
             : [{items: locked}, {items}];
+    }
+
+    #generatorSections(query: string): Section[] {
+        const typed = Number.parseInt(query.trim(), 10);
+        const items = RECIPES.map(([id, title, classes, fallback]): Item => {
+            const length = typed >= 4 && typed <= 128 ? typed : fallback;
+            const key = `${id}:${length}`;
+            let password = this.#generated.get(key);
+            if (!password) {
+                password = generate(length, classes, randomBytes);
+                this.#generated.set(key, password);
+            }
+            const value = password;
+            return {
+                id: `generator:${id}`,
+                icon: {name: 'dialog-password-symbolic', color: PASSWORDS_COLOR},
+                title: value,
+                subtitle: `${title}  ·  ${length}`,
+                actions: [
+                    {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: () => {
+                        this.#launcher.close();
+                        this.#clipboard.copy(value);
+                        osd('edit-copy-symbolic', 'Password copied');
+                    }},
+                    {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: () => {
+                        this.#launcher.close();
+                        void this.#typist.type(value);
+                    }},
+                ],
+            };
+        });
+        return [{items}];
     }
 
     #viewActions(): Action[] {
