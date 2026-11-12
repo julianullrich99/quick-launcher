@@ -542,14 +542,21 @@ export function calculate(query: string, context: CalcContext = {}): CalcResult 
                 return q.computed && !isLoneAmount(left) ? result(q.value / q.unit.factor, q.unit.symbol, source, locale) : null;
             return result(q.value * rate, code, `${source} → ${code}`, locale);
         }
-        if (isLoneAmount(left))
+        // "5,6 h" alone is worth showing as "5 h 36 min"
+        if (isLoneAmount(left) && !(q.unit && splitTime(q.value / q.unit.factor, q.unit.symbol, source)))
             return null;
 
         if (q.percent)
             return result(q.value * 100, '%', source, locale);
-        if (q.unit && sameDim(q.unit.dim, q.dim)) {
+        const oddTime = sameDim(q.dim, unitTime) && !(q.unit && q.unit.symbol in TIME_SECONDS);
+        if (q.unit && sameDim(q.unit.dim, q.dim) && !oddTime) {
             const value = q.unit.offset !== undefined ? q.value / q.unit.factor - q.unit.offset : q.value / q.unit.factor;
             return result(value, q.unit.symbol, source, locale);
+        }
+        // A time without a named unit ("3 km / 50 km/h") in the largest fitting unit
+        if (oddTime && Math.abs(q.value) >= 60) {
+            const symbol = Math.abs(q.value) >= 3600 ? 'h' : 'min';
+            return result(q.value / TIME_SECONDS[symbol], symbol, source, locale);
         }
         return result(q.value, sameDim(q.dim, DIMENSIONLESS) ? '' : siSymbol(q.dim), source, locale);
     } catch {
@@ -582,6 +589,9 @@ function joinTokens(tokens: Token[]): string {
 }
 
 function result(value: number, symbol: string, expression: string, locale?: string): CalcResult {
+    const split = splitTime(value, symbol, expression);
+    if (split)
+        return split;
     const space = symbol && !/^[%°]/.test(symbol) ? ' ' : '';
     if (/^[A-Z]{3}$/.test(symbol) && findCurrency(symbol)) {
         const money = (grouping: boolean) => new Intl.NumberFormat(locale, {
@@ -594,6 +604,40 @@ function result(value: number, symbol: string, expression: string, locale?: stri
         copy: formatNumber(value, locale, false),
         expression,
     };
+}
+
+const TIME_SECONDS: Record<string, number> = {yr: 31556952, mo: 2629746, wk: 604800, d: 86400, h: 3600, min: 60, s: 1};
+const unitTime = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
+
+/** The units a fractional time is split into: "5.6 h" → "5 h 36 min", "1.5 yr" → "1 yr 6 mo". */
+const TIME_SPLITS: Record<string, string[]> = {
+    yr: ['yr', 'mo', 'd'],
+    mo: ['mo', 'd', 'h'],
+    wk: ['wk', 'd', 'h'],
+    d: ['d', 'h', 'min'],
+    h: ['h', 'min', 's'],
+    min: ['min', 's'],
+};
+
+function splitTime(value: number, symbol: string, expression: string): CalcResult | null {
+    const units = TIME_SPLITS[symbol];
+    if (!units || Number.isInteger(value) || !Number.isFinite(value) || Math.abs(value) >= 1e6)
+        return null;
+    // Each step rounds to the smallest unit, so "2.5 yr" is "2 yr 6 mo", not "2 yr 5 mo 30 d"
+    const half = TIME_SECONDS[units[units.length - 1]] / 2;
+    let rest = Math.abs(value) * TIME_SECONDS[symbol];
+    const parts: string[] = [];
+    units.forEach((unit, i) => {
+        const size = TIME_SECONDS[unit];
+        const n = i === units.length - 1 ? Math.max(0, Math.round(rest / size)) : Math.floor((rest + half) / size);
+        rest -= n * size;
+        if (n)
+            parts.push(`${n} ${unit}`);
+    });
+    if (!parts.length)
+        return null;
+    const text = `${value < 0 ? '-' : ''}${parts.join(' ')}`;
+    return {display: text, copy: text, expression};
 }
 
 function timespan(seconds: number, expression: string): CalcResult {

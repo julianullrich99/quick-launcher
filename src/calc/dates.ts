@@ -148,8 +148,9 @@ function offsetLabel(minutes: number): string {
 }
 
 function hoursLabel(minutes: number): string {
-    const h = minutes / 60;
-    return `${h > 0 ? '+' : h < 0 ? '−' : '±'}${Math.abs(h).toLocaleString('en-US', {maximumFractionDigits: 2})} h`;
+    const abs = Math.abs(minutes);
+    const parts = [Math.floor(abs / 60) && `${Math.floor(abs / 60)} h`, abs % 60 && `${abs % 60} min`].filter(Boolean);
+    return `${minutes > 0 ? '+' : minutes < 0 ? '−' : '±'}${parts.join(' ') || '0 h'}`;
 }
 
 // --- Calendar dates (local, as day numbers to avoid DST surprises) ---
@@ -384,15 +385,29 @@ export function evaluateDate(query: string, context: DateContext = {}): CalcResu
             const unit = UNITS[m[1] ?? 'days'] ?? 'day';
             const value = unit === 'week' ? days / 7 : unit === 'month' ? days / 30.436875
                 : unit === 'hour' ? Math.round((instantIn(zone, target.y, target.m, target.d, 0, 0) - now.getTime()) / 3_600_000) * (days < 0 ? -1 : 1) : days;
-            const label = new Intl.NumberFormat(locale, {maximumFractionDigits: 1}).format(value);
-            const unitName = {day: ['day', 'days'], week: ['week', 'weeks'], month: ['month', 'months'], hour: ['hour', 'hours'], year: ['year', 'years'], minute: ['minute', 'minutes']}[unit];
             const german = (locale ?? '').startsWith('de');
-            const names = german ? {day: ['Tag', 'Tage'], week: ['Woche', 'Wochen'], month: ['Monat', 'Monate'], hour: ['Stunde', 'Stunden'], year: ['Jahr', 'Jahre'], minute: ['Minute', 'Minuten']}[unit] : unitName;
-            return {
-                display: `${label} ${value === 1 ? names[0] : names[1]}`,
-                copy: String(Number(value.toFixed(1))),
-                expression: fmtDay(target),
-            };
+            const NAMES = german
+                ? {day: ['Tag', 'Tage'], week: ['Woche', 'Wochen'], month: ['Monat', 'Monate'], hour: ['Stunde', 'Stunden'], year: ['Jahr', 'Jahre'], minute: ['Minute', 'Minuten']}
+                : {day: ['day', 'days'], week: ['week', 'weeks'], month: ['month', 'months'], hour: ['hour', 'hours'], year: ['year', 'years'], minute: ['minute', 'minutes']};
+            const amount = (n: number, u: keyof typeof NAMES) => `${new Intl.NumberFormat(locale).format(n)} ${n === 1 ? NAMES[u][0] : NAMES[u][1]}`;
+            // Weeks and months are split instead of shown as fractions: "10 weeks 3 days"
+            let display = amount(value, unit);
+            if (unit === 'week' || unit === 'month') {
+                const [from, to] = days < 0 ? [target, today] : [today, target];
+                let whole = 0;
+                let rest = Math.abs(days);
+                if (unit === 'week') {
+                    whole = Math.floor(rest / 7);
+                    rest %= 7;
+                } else {
+                    while (daysBetween(addMonths(from, whole + 1), to) >= 0)
+                        whole++;
+                    rest = daysBetween(addMonths(from, whole), to);
+                }
+                const parts = [whole && amount(whole, unit), rest && amount(rest, 'day')].filter(Boolean);
+                display = `${days < 0 ? '-' : ''}${parts.join(' ') || amount(0, 'day')}`;
+            }
+            return {display, copy: display, expression: fmtDay(target)};
         }
     }
 

@@ -42,6 +42,16 @@ test('units', () => {
     assert.equal(show('1h 30min in min'), '90 min');
     assert.equal(show('2 tage in stunden'), '48 h');
     assert.equal(show('145 min to timespan'), '2 h 25 min');
+    assert.equal(show('28h / 5'), '5 h 36 min');
+    assert.equal(show('100 h / 3'), '33 h 20 min');
+    assert.equal(show('7 min / 2'), '3 min 30 s');
+    assert.equal(show('10 h / 2'), '5 h');
+    assert.equal(show('5,6h'), '5 h 36 min');
+    assert.equal(show('5h'), null);
+    assert.equal(show('90 min in h'), '1 h 30 min');
+    assert.equal(show('1.5 wk'), '1 wk 3 d 12 h');
+    assert.equal(show('2.5 years'), '2 yr 6 mo');
+    assert.equal(show('3 km / 50 kmh'), '3 min 36 s');
     assert.equal(show('55h in workdays'), '6.875 workday');
     assert.equal(show('100 km/h in mph'), '62.13711922 mph');
     assert.equal(show('60 mph in km/h'), '96.56064 km/h');
@@ -94,6 +104,8 @@ test('dates', () => {
     assert.equal(show('today + 10 days'), 'Thursday, October 22, 2026');
     assert.equal(show('days until 24.12.'), '73 days');
     assert.equal(show('days until christmas'), '74 days');
+    assert.equal(show('weeks until christmas'), '10 weeks 4 days');
+    assert.equal(show('months until christmas'), '2 months 13 days');
     assert.equal(show('days since 1.1.'), '284 days');
     assert.equal(show('easter'), 'Sunday, March 28, 2027');
     assert.equal(show('kw'), 'Week 42');
