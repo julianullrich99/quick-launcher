@@ -114,6 +114,32 @@ test('dates', () => {
     assert.equal(show('unix'), '1791809820');
 });
 
+test('moving a time or date', () => {
+    assert.equal(show('13:59 uhr - 20h'), '05:59 PM');
+    assert.match(evaluate('13:59 uhr - 20h', context)?.expression ?? '', /yesterday/);
+    assert.equal(show('current - 2 month'), 'Wednesday, August 12, 2026');
+    assert.equal(show('jetzt - 2 monate'), 'Wednesday, August 12, 2026');
+    assert.equal(show('in 3 hours'), '05:57 PM');
+    assert.equal(show('in 2h 30min'), '05:27 PM');
+    assert.equal(show('vor 20 min'), '02:37 PM');
+    assert.equal(show('3 hours ago'), '11:57 AM');
+    assert.equal(show('now + 1,5h'), '04:27 PM');
+    assert.equal(show('13:59 + 2h - 15min'), '03:44 PM');
+    assert.equal(show('morgen 9 uhr + 90 min'), '10:30 AM');
+    assert.equal(show('5pm in 2 hours'), '07:00 PM');
+    // Further away than a day shows the date too; day steps keep the clock time across DST
+    assert.equal(show('13:00 + 14 days'), 'Mon, Oct 26, 01:00 PM');
+    assert.equal(evaluate('24.12. 18:00 - 3h', context)?.copy, '2026-12-24 15:00');
+    assert.equal(show('in 30 days'), 'Wednesday, November 11, 2026');
+});
+
+test('time between two moments', () => {
+    assert.equal(show('17:30 - 9:15'), '8 h 15 min');
+    assert.equal(show('9:00 bis 17:30'), '8 h 30 min');
+    assert.equal(show('22:00 bis 6:00'), '8 h');
+    assert.equal(show('jetzt - 9:15'), '5 h 42 min');
+});
+
 test('time zones', () => {
     assert.equal(show('time in tokyo'), '09:57 PM');
     assert.equal(show('zeit in new york'), '08:57 AM');

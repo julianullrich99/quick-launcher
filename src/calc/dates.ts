@@ -37,13 +37,14 @@ const MONTHS: Record<string, number> = {
     december: 11, dec: 11, dezember: 11, dez: 11,
 };
 
-const UNITS: Record<string, 'day' | 'week' | 'month' | 'year' | 'hour' | 'minute'> = {
+const UNITS: Record<string, 'day' | 'week' | 'month' | 'year' | 'hour' | 'minute' | 'second'> = {
     d: 'day', day: 'day', days: 'day', tag: 'day', tage: 'day', tagen: 'day',
     w: 'week', wk: 'week', week: 'week', weeks: 'week', woche: 'week', wochen: 'week',
     mo: 'month', month: 'month', months: 'month', monat: 'month', monate: 'month', monaten: 'month',
     y: 'year', yr: 'year', year: 'year', years: 'year', jahr: 'year', jahre: 'year', jahren: 'year',
-    h: 'hour', hour: 'hour', hours: 'hour', stunde: 'hour', stunden: 'hour',
-    min: 'minute', minute: 'minute', minutes: 'minute', minuten: 'minute',
+    h: 'hour', hr: 'hour', hrs: 'hour', hour: 'hour', hours: 'hour', std: 'hour', stunde: 'hour', stunden: 'hour',
+    m: 'minute', min: 'minute', mins: 'minute', minute: 'minute', minutes: 'minute', minuten: 'minute',
+    s: 'second', sec: 'second', secs: 'second', sek: 'second', second: 'second', seconds: 'second', sekunde: 'second', sekunden: 'second',
 };
 
 /** Place names that aren't the city part of an IANA zone. */
@@ -291,16 +292,6 @@ function valid(y: number, m: number, d: number): Day | null {
     return day.m === m ? day : null;
 }
 
-function shift(day: Day, n: number, unit: string): Day {
-    switch (UNITS[unit]) {
-    case 'day': return addDays(day, n);
-    case 'week': return addDays(day, 7 * n);
-    case 'month': return addMonths(day, n);
-    case 'year': return addMonths(day, 12 * n);
-    default: return day;
-    }
-}
-
 /** Evaluates a date or time query; null if it isn't one. */
 export function evaluateDate(query: string, context: DateContext = {}): CalcResult | null {
     const now = context.now ?? new Date();
@@ -332,8 +323,108 @@ export function evaluateDate(query: string, context: DateContext = {}): CalcResu
     };
     const weekLabel = (week: number) => (locale ?? '').startsWith('de') ? `KW ${week}` : `Week ${week}`;
 
+    interface Moment {
+        day: Day;
+        h: number;
+        mi: number;
+        /** Seconds and milliseconds past the minute, only for "now" */
+        ms: number;
+        /** An explicit clock time was given */
+        clock: boolean;
+        now: boolean;
+    }
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const moment = (input: string): Moment | null => {
+        const s = input.trim();
+        if (NOW.test(s))
+            return {day: today, h: wall.h, mi: wall.mi, ms: now.getTime() % 60_000, clock: false, now: true};
+        const time = clockTime(s);
+        if (time)
+            return {day: today, ...time, ms: 0, clock: true, now: false};
+        const day = dates.date(s);
+        if (day)
+            return {day, h: 0, mi: 0, ms: 0, clock: false, now: false};
+        // "morgen 9 uhr", "24.12. um 18:00", "friday at 5pm"
+        const m = s.match(/^(.+?),? (?:um |at |@ ?)?(\d{1,2}(?:[:.]\d{2})? ?(?:am|pm|uhr|h)?)$/);
+        const withTime = m && clockTime(m[2]);
+        const withDay = withTime && dates.date(m[1]);
+        return withDay ? {day: withDay, ...withTime, ms: 0, clock: true, now: false} : null;
+    };
+    const nowMoment = moment('now')!;
+    const instantOf = (base: Moment, shift?: Shift) => {
+        if (base.now && !shift?.days && !shift?.months)
+            return now.getTime() + (shift?.ms ?? 0);
+        const day = addDays(addMonths(base.day, shift?.months ?? 0), shift?.days ?? 0);
+        return instantIn(zone, day.y, day.m, day.d, base.h, base.mi) + base.ms + (shift?.ms ?? 0);
+    };
+    const showMoment = (instant: number, withTime: boolean, expression: string): CalcResult => {
+        const w = wallClock(instant, zone);
+        const day: Day = {y: w.y, m: w.mo, d: w.d};
+        if (!withTime)
+            return dayResult(day, expression);
+        const diff = daysBetween(today, day);
+        const time = fmtTime(instant, zone);
+        if (Math.abs(diff) <= 1)
+            return {display: time, copy: time, expression: [expression, relative(diff), fmtDay(day, 'short')].join(' · ')};
+        const display = new Intl.DateTimeFormat(locale, {
+            timeZone: zone, weekday: 'short', day: 'numeric', month: 'short', year: day.y === today.y ? undefined : 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        }).format(new Date(instant));
+        return {display, copy: `${isoDay(day)} ${pad(w.h)}:${pad(w.mi)}`, expression: [expression, relative(diff)].join(' · ')};
+    };
+    const span = (from: number, to: number, expression: string): CalcResult => {
+        const minutes = Math.round((to - from) / 60_000);
+        const abs = Math.abs(minutes);
+        const parts = [Math.floor(abs / 1440) && `${Math.floor(abs / 1440)} d`, Math.floor(abs / 60) % 24 && `${Math.floor(abs / 60) % 24} h`, abs % 60 && `${abs % 60} min`].filter(Boolean);
+        const display = `${minutes < 0 ? '−' : ''}${parts.join(' ') || '0 min'}`;
+        return {display, copy: display, expression};
+    };
+    const evaluateMoment = (input: string): CalcResult | null => {
+        const s = input.replace(/ plus /g, ' + ').replace(/ minus /g, ' - ');
+        // "in 3 hours", "in 2 weeks"
+        let m = s.match(/^in (.+)$/);
+        let shift = m && parseShift(m[1], '+');
+        if (shift)
+            return showMoment(instantOf(nowMoment, shift), shift.clock, input);
+        // "vor 20 min", "3 days ago"
+        m = s.match(/^vor (.+)$/) ?? s.match(/^(.+) ago$/);
+        shift = m && parseShift(m[1], '-');
+        if (shift)
+            return showMoment(instantOf(nowMoment, shift), shift.clock, input);
+        // "monday in 3 weeks", "13:00 in 90 min"
+        m = s.match(/^(.+?) in (.+)$/);
+        shift = m && parseShift(m[2], '+');
+        let base = shift && moment(m![1]);
+        if (shift && base)
+            return showMoment(instantOf(base, shift), base.clock || shift.clock, input);
+        // "13:59 uhr - 20h", "current - 2 month", "24.12.-3 weeks"
+        for (const sign of s.matchAll(/[+-]/g)) {
+            const left = s.slice(0, sign.index).trim();
+            shift = left ? parseShift(s.slice(sign.index)) : null;
+            base = shift && moment(left);
+            if (shift && base)
+                return showMoment(instantOf(base, shift), base.clock || shift.clock, input);
+        }
+        // Time between two moments: "17:30 - 9:15" (end - start), "9:00 bis 17:30", "22:00 to 6:00"
+        for (const [pattern, reversed] of [[/^(.+?) ?[-−] ?(.+)$/, true], [/^(?:von |from )?(.+?) (?:bis|to|until|till|–) (.+)$/, false]] as const) {
+            m = s.match(pattern);
+            const a = m && moment(m[1]);
+            const b = m && moment(m[2]);
+            if (!a || !b || !(a.clock || a.now || b.clock || b.now))
+                continue;
+            const [start, end] = reversed ? [b, a] : [a, b];
+            let to = instantOf(end);
+            const from = instantOf(start);
+            // A range of two clock times that ends before it starts goes over midnight
+            if (!reversed && to < from && start.clock && end.clock && daysBetween(start.day, end.day) === 0)
+                to = instantOf({...end, day: addDays(end.day, 1)});
+            return span(from, to, `${fmtTime(from, zone)} → ${fmtTime(to, zone)}`);
+        }
+        return null;
+    };
+
     // now / time / date
-    if (/^(now|jetzt)$/.test(text)) {
+    if (NOW.test(text)) {
         const display = new Intl.DateTimeFormat(locale, {dateStyle: 'full', timeStyle: 'short', timeZone: zone}).format(now);
         return {display, copy: now.toISOString(), expression: `${text} · ${placeName(zone)}`};
     }
@@ -387,8 +478,8 @@ export function evaluateDate(query: string, context: DateContext = {}): CalcResu
                 : unit === 'hour' ? Math.round((instantIn(zone, target.y, target.m, target.d, 0, 0) - now.getTime()) / 3_600_000) * (days < 0 ? -1 : 1) : days;
             const german = (locale ?? '').startsWith('de');
             const NAMES = german
-                ? {day: ['Tag', 'Tage'], week: ['Woche', 'Wochen'], month: ['Monat', 'Monate'], hour: ['Stunde', 'Stunden'], year: ['Jahr', 'Jahre'], minute: ['Minute', 'Minuten']}
-                : {day: ['day', 'days'], week: ['week', 'weeks'], month: ['month', 'months'], hour: ['hour', 'hours'], year: ['year', 'years'], minute: ['minute', 'minutes']};
+                ? {day: ['Tag', 'Tage'], week: ['Woche', 'Wochen'], month: ['Monat', 'Monate'], hour: ['Stunde', 'Stunden'], year: ['Jahr', 'Jahre'], minute: ['Minute', 'Minuten'], second: ['Sekunde', 'Sekunden']}
+                : {day: ['day', 'days'], week: ['week', 'weeks'], month: ['month', 'months'], hour: ['hour', 'hours'], year: ['year', 'years'], minute: ['minute', 'minutes'], second: ['second', 'seconds']};
             const amount = (n: number, u: keyof typeof NAMES) => `${new Intl.NumberFormat(locale).format(n)} ${n === 1 ? NAMES[u][0] : NAMES[u][1]}`;
             // Weeks and months are split instead of shown as fractions: "10 weeks 3 days"
             let display = amount(value, unit);
@@ -411,29 +502,12 @@ export function evaluateDate(query: string, context: DateContext = {}): CalcResu
         }
     }
 
-    // Date arithmetic: "in 3 weeks", "3 days ago", "vor 2 wochen", "monday in 3 weeks", "today + 10 days", "24.12. - 3 weeks"
-    m = text.match(/^in (\d+) ([a-zä]+)$/);
-    if (m && UNITS[m[2]] && UNITS[m[2]] !== 'hour' && UNITS[m[2]] !== 'minute')
-        return dayResult(shift(today, Number(m[1]), m[2]), text);
-    m = text.match(/^(?:(\d+) ([a-zä]+) ago|vor (\d+) ([a-zä]+))$/);
-    if (m) {
-        const n = Number(m[1] ?? m[3]);
-        const unit = m[2] ?? m[4];
-        if (UNITS[unit] && UNITS[unit] !== 'hour' && UNITS[unit] !== 'minute')
-            return dayResult(shift(today, -n, unit), text);
-    }
-    m = text.match(/^(.+?) in (\d+) ([a-zä]+)$/);
-    if (m && UNITS[m[3]] && !findZone(m[1])) {
-        const base = dates.date(m[1]);
-        if (base)
-            return dayResult(shift(base, Number(m[2]), m[3]), text);
-    }
-    m = text.match(/^(.+?) ?([+-]) ?(\d+) ?([a-zä]+)$/);
-    if (m && UNITS[m[4]] && UNITS[m[4]] !== 'hour' && UNITS[m[4]] !== 'minute') {
-        const base = dates.date(m[1]);
-        if (base)
-            return dayResult(shift(base, (m[2] === '-' ? -1 : 1) * Number(m[3]), m[4]), text);
-    }
+    // Moving a moment: "13:59 - 20h", "now - 2 months", "in 3 hours", "vor 20 min", "morgen 9 uhr + 90 min",
+    // "monday in 3 weeks", "24.12. - 3 weeks". Clock units or a clock time show a time, day units a date.
+    // Two moments give the time between them: "17:30 - 9:15", "9:00 bis 17:30", "jetzt - 9:15".
+    const moved = evaluateMoment(text);
+    if (moved)
+        return moved;
     m = text.match(/^(.+?) - (.+)$/);
     if (m) {
         const a = dates.date(m[1]);
@@ -450,6 +524,58 @@ export function evaluateDate(query: string, context: DateContext = {}): CalcResu
         return dayResult(day, text);
 
     return evaluateTimeZone(text, now, zone, locale);
+}
+
+const NOW = /^(now|jetzt|current|currently|aktuell|gerade)$/;
+
+/** A clock time that can't be mistaken for a number or duration: "13:59", "13:59 uhr", "9 uhr", "5pm". */
+function clockTime(text: string): {h: number; mi: number} | null {
+    return /:|am$|pm$|uhr$/.test(text) ? parseTime(text) : null;
+}
+
+interface Shift {
+    days: number;
+    months: number;
+    ms: number;
+    /** Something finer than a day is involved */
+    clock: boolean;
+}
+
+/** "- 20h", "+ 2 months", "- 2h 30min" (later terms keep the sign); `sign` when the text has none. */
+function parseShift(text: string, sign?: '+' | '-'): Shift | null {
+    const shift: Shift = {days: 0, months: 0, ms: 0, clock: false};
+    let rest = text.trim();
+    let current = sign;
+    while (rest) {
+        const m = rest.match(/^(?:([-+−])\s*)?(\d+(?:[.,]\d+)?)\s*([a-zäöü]+)\.?\s*/);
+        if (!m)
+            return null;
+        if (m[1])
+            current = m[1] === '+' ? '+' : '-';
+        if (!current)
+            return null;
+        const n = Number(m[2].replace(',', '.')) * (current === '-' ? -1 : 1);
+        const unit = UNITS[m[3]];
+        const days = unit === 'day' ? n : unit === 'week' ? 7 * n : null;
+        if (days !== null && Number.isInteger(days)) {
+            shift.days += days;
+        } else if (days !== null) {
+            shift.ms += days * DAY;
+            shift.clock = true;
+        } else if (unit === 'month' || unit === 'year') {
+            const months = unit === 'year' ? 12 * n : n;
+            if (!Number.isInteger(months))
+                return null;
+            shift.months += months;
+        } else if (unit === 'hour' || unit === 'minute' || unit === 'second') {
+            shift.ms += n * {hour: 3_600_000, minute: 60_000, second: 1000}[unit];
+            shift.clock = true;
+        } else {
+            return null;
+        }
+        rest = rest.slice(m[0].length);
+    }
+    return shift;
 }
 
 const TIME = /(\d{1,2})(?:[:.](\d{2}))? ?(am|pm|uhr|h)?/;
