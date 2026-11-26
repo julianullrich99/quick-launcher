@@ -7,39 +7,70 @@ import St from 'gi://St';
 
 const TAPS = 96;
 
+const DECLARATIONS = 'uniform vec2 size;\nuniform float radius;\nuniform float blur;';
+const SHADER = `
+    vec2 uv = cogl_tex_coord0_in.xy;
+    vec4 sum = vec4(0.0);
+    float total = 0.0;
+    // Gaussian-weighted samples on a golden-angle spiral
+    for (int i = 0; i < ${TAPS}; i++) {
+        float r = sqrt((float(i) + 0.5) / ${TAPS}.0);
+        float a = float(i) * 2.39996323;
+        float w = exp(-2.0 * r * r);
+        sum += texture2D(cogl_sampler0, uv + vec2(cos(a), sin(a)) * r * blur / size) * w;
+        total += w;
+    }
+    vec2 q = abs(uv * size - size * 0.5) - (size * 0.5 - radius);
+    cogl_color_out = sum / total * clamp(radius - length(max(q, 0.0)) + 0.5, 0.0, 1.0);
+`;
+
+interface RoundedBlur extends Clutter.Effect {
+    update(width: number, height: number, radius: number, blur: number): void;
+}
+
+// Unique per load: `make reload` imports this module again in the same session.
+const gtypeName = () => `QuickLauncherRoundedBlur${GLib.uuid_string_random().replaceAll('-', '')}`;
+
 /**
  * Blurs the actor and cuts it to a rounded rectangle in one pass.
  * Shell.BlurEffect can't be rounded and stops blurring under another effect.
+ * GNOME 51 removed Shell.GLSLEffect; there Clutter.ShaderEffect takes the same shader as a Cogl snippet.
  */
-const RoundedBlur = GObject.registerClass({
-    // Unique per load: `make reload` imports this module again in the same session.
-    GTypeName: `QuickLauncherRoundedBlur${GLib.uuid_string_random().replaceAll('-', '')}`,
-}, class RoundedBlur extends Shell.GLSLEffect {
-    override vfunc_build_pipeline() {
-        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, 'uniform vec2 size;\nuniform float radius;\nuniform float blur;', `
-            vec2 uv = cogl_tex_coord0_in.xy;
-            vec4 sum = vec4(0.0);
-            float total = 0.0;
-            // Gaussian-weighted samples on a golden-angle spiral
-            for (int i = 0; i < ${TAPS}; i++) {
-                float r = sqrt((float(i) + 0.5) / ${TAPS}.0);
-                float a = float(i) * 2.39996323;
-                float w = exp(-2.0 * r * r);
-                sum += texture2D(cogl_sampler0, uv + vec2(cos(a), sin(a)) * r * blur / size) * w;
-                total += w;
+function defineRoundedBlur(): new () => RoundedBlur {
+    const GLSLEffect = (Shell as any).GLSLEffect as typeof Shell.GLSLEffect | undefined;
+    if (GLSLEffect) {
+        return GObject.registerClass({GTypeName: gtypeName()}, class extends GLSLEffect {
+            override vfunc_build_pipeline() {
+                this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, DECLARATIONS, SHADER, true);
             }
-            vec2 q = abs(uv * size - size * 0.5) - (size * 0.5 - radius);
-            cogl_color_out = sum / total * clamp(radius - length(max(q, 0.0)) + 0.5, 0.0, 1.0);
-        `, true);
+
+            update(width: number, height: number, radius: number, blur: number) {
+                this.set_uniform_float(this.get_uniform_location('size'), 2, [width, height]);
+                this.set_uniform_float(this.get_uniform_location('radius'), 1, [radius]);
+                this.set_uniform_float(this.get_uniform_location('blur'), 1, [blur]);
+                this.queue_repaint();
+            }
+        });
     }
 
-    update(width: number, height: number, radius: number, blur: number) {
-        this.set_uniform_float(this.get_uniform_location('size'), 2, [width, height]);
-        this.set_uniform_float(this.get_uniform_location('radius'), 1, [radius]);
-        this.set_uniform_float(this.get_uniform_location('blur'), 1, [blur]);
-        this.queue_repaint();
-    }
-});
+    return GObject.registerClass({GTypeName: gtypeName()}, class extends Clutter.ShaderEffect {
+        vfunc_get_static_snippet() {
+            const snippet = Cogl.Snippet.new(Cogl.SnippetHook.FRAGMENT, DECLARATIONS, null);
+            snippet.set_replace(SHADER);
+            return snippet;
+        }
+
+        update(width: number, height: number, radius: number, blur: number) {
+            const self = this as any;
+            self.set_uniform_float('size', 2, [width, height]);
+            self.set_uniform_float('radius', 1, [radius]);
+            self.set_uniform_float('blur', 1, [blur]);
+            this.queue_repaint();
+        }
+    });
+}
+
+const RoundedBlur = defineRoundedBlur();
 
 /**
  * A blurred copy of the windows and wallpaper behind it, with rounded corners
