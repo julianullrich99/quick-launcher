@@ -192,7 +192,12 @@ export class Launcher {
                 this.#update();
             }
         });
-        text.connect('key-press-event', (_actor, event: Clutter.Event) => this.#onKeyPress(event));
+        // Before the text sees the key: since GNOME 51 its own bindings (Enter, Backspace)
+        // run ahead of key-press-event handlers connected to it.
+        this.#entry.connect('captured-event', (_actor, event: Clutter.Event) =>
+            event.type() === Clutter.EventType.KEY_PRESS && global.stage.get_key_focus() === text
+                ? this.#onKeyPress(event)
+                : Clutter.EVENT_PROPAGATE);
 
         // The list, with the action panel floating over its bottom right corner
         const stack = new St.Widget({layout_manager: new Clutter.BinLayout(), x_expand: true});
