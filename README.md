@@ -34,7 +34,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Shows the running timer and how long it runs in the top bar
 - *Getting Started* on the first open connects your accounts and shows what it can do
 
-Quick Launcher supports GNOME Shell 48, 49 and 50.
+Quick Launcher supports GNOME Shell 48, 49, 50 and 51.
 
 ## Install
 

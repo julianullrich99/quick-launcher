@@ -2,7 +2,7 @@
   "uuid": "quick-launcher@julian.falcondev.de",
   "name": "Quick Launcher",
   "description": "A Raycast-style launcher: Bitwarden (rbw) and 1Password in one search, Clockify timers, a calculator with units, currencies, dates and time zones, emoji and system commands.",
-  "shell-version": ["48", "49", "50"],
+  "shell-version": ["48", "49", "50", "51"],
   "settings-schema": "org.gnome.shell.extensions.quick-launcher",
   "url": "https://github.com/TheSalaty/quick-launcher",
   "version": 2,
